@@ -103,7 +103,7 @@ export type Section = "dashboard" | "patients" | "followups" | "prescriptions" |
 export interface InventoryItem {
   id: string;
   name: string;
-  category: "lens" | "frame" | "accessory" | "other";
+  category: "lens" | "frame" | "accessory" | "other" | "contact_lens" | "reading_frame";
   sku?: string;
   stock_level: number;
   reorder_point: number;

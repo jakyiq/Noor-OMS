@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Disc, Mail, Lock, User, Phone, ArrowRight, ArrowLeft } from "lucide-react";
+import { Disc, Mail, Lock, User, Phone, ArrowRight, ArrowLeft, Globe } from "lucide-react";
 import { useClinic } from "../context/ClinicContext";
 import { motion } from "motion/react";
+import { cn } from "../lib/utils";
 
 export function Auth() {
   const { lang, setLang, setUser, t } = useClinic();
@@ -78,13 +79,46 @@ export function Auth() {
 
       {/* Form Panel */}
       <div className="w-full lg:w-[480px] bg-white flex items-center justify-center p-6 sm:p-12 relative shadow-2xl">
-        <div className="absolute top-6 end-6 flex gap-2">
-          <button 
-            onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
-            className="text-[10px] font-bold text-ink-light hover:text-burgundy tracking-widest uppercase transition-colors"
-          >
-            {lang === 'ar' ? 'English' : 'العربية'}
-          </button>
+        <div className="absolute top-6 end-6 flex items-center bg-cream-dark/40 border border-cream-border p-[3px] rounded-full shadow-sm z-50 backdrop-blur-sm">
+          <div className="flex items-center gap-1 px-2.5 text-ink-light font-medium text-[10px] select-none border-e border-cream-border/60">
+            <Globe size={12} className="text-burgundy animate-pulse" />
+            <span className="font-bold font-mono">{lang.toUpperCase()}</span>
+          </div>
+
+          <div className="flex gap-0.5 relative px-1">
+            <button 
+              onClick={() => setLang("ar")}
+              className={cn(
+                "relative z-10 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase transition-all duration-300 outline-none",
+                lang === "ar" ? "text-white" : "text-ink-mid hover:text-burgundy"
+              )}
+            >
+              Ar
+              {lang === "ar" && (
+                <motion.div 
+                  layoutId="authActiveLang"
+                  className="absolute inset-0 bg-burgundy rounded-full -z-10 shadow-sm"
+                  transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                />
+              )}
+            </button>
+            <button 
+              onClick={() => setLang("en")}
+              className={cn(
+                "relative z-10 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase transition-all duration-300 outline-none",
+                lang === "en" ? "text-white" : "text-ink-mid hover:text-burgundy"
+              )}
+            >
+              En
+              {lang === "en" && (
+                <motion.div 
+                  layoutId="authActiveLang"
+                  className="absolute inset-0 bg-burgundy rounded-full -z-10 shadow-sm"
+                  transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                />
+              )}
+            </button>
+          </div>
         </div>
 
         <motion.div 

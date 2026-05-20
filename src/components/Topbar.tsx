@@ -42,7 +42,7 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
             className="flex items-center gap-2 px-3 py-1.5 md:py-2 md:px-4 bg-burgundy hover:bg-burgundy-light text-white text-sm font-bold rounded-lg transition-colors shadow-sm"
           >
             <Plus size={16} />
-            <span className="hidden sm:inline">{lang === "ar" ? "اضافة مريض" : "Add Patient"}</span>
+            <span className="hidden sm:inline">{lang === "ar" ? "اضافة مراجع" : "Add Patient"}</span>
           </button>
           
           <button className="p-2 text-ink-mid hover:bg-cream rounded-lg transition-colors relative">

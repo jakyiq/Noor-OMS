@@ -66,6 +66,23 @@
   color: #5a5a5a;
 }
 
+/* Fix ugly browser/iframe focus outlines and black borders around Recharts elements and SVGs */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-surface *,
+.recharts-legend-wrapper,
+.recharts-tooltip-wrapper,
+svg,
+svg *,
+rect,
+path,
+g {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
 @media print {
   @page {
     size: A5;

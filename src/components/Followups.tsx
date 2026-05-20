@@ -126,7 +126,7 @@ export function Followups() {
               <input 
                 id="followups-search"
                 type="text" 
-                placeholder={isSearchExpanded || searchTerm ? (lang === 'ar' ? "البحث عن مريض..." : "Search patient...") : ""}
+                placeholder={isSearchExpanded || searchTerm ? (lang === 'ar' ? "البحث عن مراجع..." : "Search patient...") : ""}
                 className={cn(
                   "w-full h-full min-h-[46px] ps-10 pe-4 bg-transparent transition-all outline-none text-sm relative z-10",
                   isSearchExpanded || searchTerm ? "opacity-100" : "opacity-0 cursor-pointer w-[46px]"

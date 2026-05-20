@@ -14,7 +14,8 @@ export function Settings() {
     wa_template_1: clinic?.wa_template_1 || "Hello {patient_name}, this is a reminder for your follow-up on {next_visit} from {clinic_name}.",
     wa_template_2: clinic?.wa_template_2 || "",
     wa_template_3: clinic?.wa_template_3 || "",
-    default_followup_months: clinic?.default_followup_months ?? 3
+    default_followup_months: clinic?.default_followup_months ?? 3,
+    exclude_pos_from_patient_menu: clinic?.exclude_pos_from_patient_menu ?? false
   });
 
   const serializeCatalog = (items: import("../types").CatalogItem[]) => items.map(i => `${i.label} | ${i.value}`).join('\n');
@@ -72,6 +73,7 @@ export function Settings() {
     if (formData.address !== clinic.address) changes.push(`Address from "${clinic.address}" to "${formData.address}"`);
     if (formData.default_followup_months !== clinic.default_followup_months) changes.push(`Default Follow-up changed to ${formData.default_followup_months} months`);
     if (formData.wa_template_1 !== clinic.wa_template_1) changes.push(`WhatsApp Template 1 changed`);
+    if (formData.exclude_pos_from_patient_menu !== clinic.exclude_pos_from_patient_menu) changes.push(`Exclude POS from patient list changed to ${formData.exclude_pos_from_patient_menu}`);
 
     if (changes.length > 0) {
       logAction({
@@ -192,6 +194,26 @@ export function Settings() {
                     value={formData.default_followup_months}
                     onChange={e => setFormData({ ...formData, default_followup_months: parseInt(e.target.value) || 3 })}
                   />
+                </div>
+                <div className="pt-4 border-t border-cream-border/60">
+                  <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="rounded border-cream-border text-burgundy focus:ring-burgundy/20 mt-1"
+                      checked={formData.exclude_pos_from_patient_menu}
+                      onChange={e => setFormData({ ...formData, exclude_pos_from_patient_menu: e.target.checked })}
+                    />
+                    <div>
+                      <span className="block text-sm font-bold text-ink">
+                        {lang === 'ar' ? 'استثناء بيع سريع من قائمة المرضى' : 'Exclude Quick Sell from Patient Menu'}
+                      </span>
+                      <span className="block text-xs text-ink-light mt-0.5 leading-normal">
+                        {lang === 'ar' 
+                          ? 'عند تفعيل هذا الخيار، لن يظهر سجل زبائن البيع السريع (سفري) ضمن قائمة البحث عن المرضى، مع بقاء مبيعاتهم مدرجة بالتقارير المالية والتحليلات بالكامل.'
+                          : 'When checked, the virtual walk-in retail patient container is hidden from the patient list view, while their transactions are still fully calculated in all financial and sales reports.'}
+                      </span>
+                    </div>
+                  </label>
                 </div>
                 <div className="flex flex-col items-start gap-3 pt-6 border-t border-cream-border mt-6">
                   <button

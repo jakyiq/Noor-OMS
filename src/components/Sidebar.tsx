@@ -13,7 +13,9 @@ import {
   Stethoscope,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Globe,
+  ShoppingCart
 } from "lucide-react";
 import { useClinic } from "../context/ClinicContext";
 import { cn } from "../lib/utils";
@@ -47,6 +49,7 @@ export function Sidebar({
       items: [
         { id: "lenses", label: t("lenses"), icon: Disc },
         { id: "frames", label: t("frames"), icon: Glasses },
+        { id: "inventory", label: lang === "ar" ? "بيع سريع" : "Inventory", icon: ShoppingCart },
       ]
     },
     {
@@ -147,21 +150,61 @@ export function Sidebar({
 
       {/* Footer */}
       <div className="p-4 border-t border-white/10 space-y-4">
-        {(!collapsed || mobileOpen) && (
-          <div className="flex bg-white/10 p-1 rounded-lg">
+        {(!collapsed || mobileOpen) ? (
+          <div className="bg-white/5 border border-white/10 p-[3px] rounded-xl flex items-center justify-between w-full relative z-10">
             <button 
               onClick={() => setLang("ar")}
-              className={cn("flex-1 text-[10px] py-1 rounded", lang === "ar" ? "bg-white text-burgundy font-bold" : "text-white/60")}
+              className={cn(
+                "relative z-10 flex-1 py-1 px-3 rounded-lg text-xs font-semibold transition-all duration-300 flex items-center justify-center gap-1.5 h-8 outline-none",
+                lang === "ar" 
+                  ? "text-burgundy font-bold" 
+                  : "text-white/70 hover:text-white"
+              )}
             >
-              العربية
+              {lang === "ar" && (
+                <motion.div 
+                  layoutId="activeLangIndicator"
+                  className="absolute inset-0 bg-white rounded-lg -z-10 shadow-md"
+                  transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                />
+              )}
+              <span>العربية</span>
             </button>
+
             <button 
               onClick={() => setLang("en")}
-              className={cn("flex-1 text-[10px] py-1 rounded", lang === "en" ? "bg-white text-burgundy font-bold" : "text-white/60")}
+              className={cn(
+                "relative z-10 flex-1 py-1 px-3 rounded-lg text-xs font-semibold transition-all duration-300 flex items-center justify-center gap-1.5 h-8 outline-none",
+                lang === "en" 
+                  ? "text-burgundy font-bold" 
+                  : "text-white/70 hover:text-white"
+              )}
             >
-              English
+              {lang === "en" && (
+                <motion.div 
+                  layoutId="activeLangIndicator"
+                  className="absolute inset-0 bg-white rounded-lg -z-10 shadow-md"
+                  transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                />
+              )}
+              <span>English</span>
             </button>
           </div>
+        ) : (
+          <button
+            onClick={() => setLang(lang === "ar" ? "en" : "ar")}
+            className="w-full flex flex-col items-center justify-center py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all relative group text-white/75 hover:text-white outline-none"
+            title={lang === "ar" ? "Switch to English" : "تغيير للعربية"}
+          >
+            <Globe className="w-4 h-4 text-white/70 group-hover:text-gold group-hover:scale-110 transition-all duration-300" />
+            <span className="text-[8px] font-bold mt-1 text-white/50">{lang.toUpperCase()}</span>
+            <span className={cn(
+              "absolute bg-zinc-900 border border-white/15 text-white text-[10px] px-2.5 py-1.5 rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-xl",
+              lang === "ar" ? "end-16" : "start-16"
+            )}>
+              {lang === "ar" ? "English" : "العربية"}
+            </span>
+          </button>
         )}
 
         <div className="flex items-center gap-3 px-1">

@@ -11,6 +11,8 @@ export interface ClinicContextType {
   setClinic: (c: Clinic | null) => void;
   currentSection: Section;
   setCurrentSection: (s: Section) => void;
+  inventoryFilter: string;
+  setInventoryFilter: (f: string) => void;
   t: (key: keyof typeof TRANSLATIONS["en"]) => string;
   auditLogs: AuditEntry[];
   logAction: (entry: Omit<AuditEntry, "id" | "timestamp" | "user_id" | "user_name">) => void;
@@ -28,6 +30,10 @@ export interface ClinicContextType {
   setLenses: React.Dispatch<React.SetStateAction<import("../types").LensItem[]>>;
   frames: import("../types").FrameItem[];
   setFrames: React.Dispatch<React.SetStateAction<import("../types").FrameItem[]>>;
+  isQuickSellOpen: boolean;
+  setIsQuickSellOpen: (open: boolean) => void;
+  inventoryTrigger: number;
+  setInventoryTrigger: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const ClinicContext = createContext<ClinicContextType | undefined>(undefined);
@@ -41,13 +47,27 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     role: "super_admin",
     clinic_id: "c1"
   });
-  const [clinic, setClinic] = useState<Clinic | null>({
-    id: "c1",
-    name: "Noor Clinic",
-    phone: "+964 7XX XXX XXXX",
-    address: "Baghdad, Iraq"
+  const [clinic, setClinic] = useState<Clinic | null>(() => {
+    const saved = localStorage.getItem("noor_clinic_settings");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Error reading clinic settings library:", e);
+      }
+    }
+    return {
+      id: "c1",
+      name: "Noor Clinic",
+      phone: "+964 7XX XXX XXXX",
+      address: "Baghdad, Iraq",
+      exclude_pos_from_patient_menu: false
+    };
   });
   const [currentSection, setCurrentSection] = useState<Section>("dashboard");
+  const [inventoryFilter, setInventoryFilter] = useState<string>("all");
+  const [isQuickSellOpen, setIsQuickSellOpen] = useState(false);
+  const [inventoryTrigger, setInventoryTrigger] = useState(0);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [followupCount, setFollowupCount] = useState<number>(0);
   const [triggerAddPatient, setTriggerAddPatient] = useState<number>(0);
@@ -119,6 +139,12 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   }, [lensCatalog]);
 
   useEffect(() => {
+    if (clinic) {
+      localStorage.setItem("noor_clinic_settings", JSON.stringify(clinic));
+    }
+  }, [clinic]);
+
+  useEffect(() => {
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
     document.documentElement.lang = lang;
   }, [lang]);
@@ -147,22 +173,66 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   const [patients, setPatients] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [lenses, setLenses] = useState<import("../types").LensItem[]>([
-    { id: "1", lens_type: "Single Vision", material: "Plastic (CR-39)", coating: "Anti-Reflective Filter", sphere: -1.5, cylinder: -0.5, quantity: 15, min_stock: 4, cost_price: 5000, sell_price: 15000 },
-    { id: "2", lens_type: "Bifocal", material: "Polycarbonate", coating: "Clear", sphere: +2.0, cylinder: 0, quantity: 2, min_stock: 5, cost_price: 10000, sell_price: 25000 },
-    { id: "3", lens_type: "Single Vision", material: "Plastic (CR-39)", coating: "Blue Control", sphere: -0.5, cylinder: -1.25, quantity: 0, min_stock: 2, cost_price: 8000, sell_price: 20000 },
-  ]);
+  const [lenses, setLenses] = useState<import("../types").LensItem[]>(() => {
+    const saved = localStorage.getItem("noor_lenses");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Error loading lenses:", e);
+      }
+    }
+    return [
+      { id: "1", lens_type: "Single Vision", material: "Plastic (CR-39)", coating: "Anti-Reflective Filter", sphere: -1.5, cylinder: -0.5, quantity: 15, min_stock: 4, cost_price: 5000, sell_price: 15000 },
+      { id: "2", lens_type: "Bifocal", material: "Polycarbonate", coating: "Clear", sphere: +2.0, cylinder: 0, quantity: 2, min_stock: 5, cost_price: 10000, sell_price: 25000 },
+      { id: "3", lens_type: "Single Vision", material: "Plastic (CR-39)", coating: "Blue Control", sphere: -0.5, cylinder: -1.25, quantity: 0, min_stock: 2, cost_price: 8000, sell_price: 20000 },
+    ];
+  });
 
-  const [frames, setFrames] = useState<import("../types").FrameItem[]>([
-    { id: "1", brand: "Ray-Ban", model: "Wayfarer Classic", color: "Black", type: "Full Rim", material: "Acetate", shape: "Square", quantity: 5, min_stock: 2, cost_price: 60000, sell_price: 150000 },
-    { id: "2", brand: "Oakley", model: "Holbrook", color: "Matte Black", type: "Full Rim", material: "Plastic", shape: "Rectangle", quantity: 3, min_stock: 3, cost_price: 45000, sell_price: 110000 },
-    { id: "3", brand: "Gucci", model: "GG0012S", color: "Havana", type: "Full Rim", material: "Acetate", shape: "Round", quantity: 1, min_stock: 2, cost_price: 150000, sell_price: 350000 }
-  ]);
+  const [frames, setFrames] = useState<import("../types").FrameItem[]>(() => {
+    const saved = localStorage.getItem("noor_frames");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Error loading frames:", e);
+      }
+    }
+    return [
+      { id: "1", brand: "Ray-Ban", model: "Wayfarer Classic", color: "Black", type: "Full Rim", material: "Acetate", shape: "Square", quantity: 5, min_stock: 2, cost_price: 60000, sell_price: 150000 },
+      { id: "2", brand: "Oakley", model: "Holbrook", color: "Matte Black", type: "Full Rim", material: "Plastic", shape: "Rectangle", quantity: 3, min_stock: 3, cost_price: 45000, sell_price: 110000 },
+      { id: "3", brand: "Gucci", model: "GG0012S", color: "Havana", type: "Full Rim", material: "Acetate", shape: "Round", quantity: 1, min_stock: 2, cost_price: 150000, sell_price: 350000 }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("noor_lenses", JSON.stringify(lenses));
+  }, [lenses]);
+
+  useEffect(() => {
+    localStorage.setItem("noor_frames", JSON.stringify(frames));
+  }, [frames]);
+
+  useEffect(() => {
+    if (patients.length > 0) {
+      localStorage.setItem("noor_patients", JSON.stringify(patients));
+    }
+  }, [patients]);
 
   useEffect(() => {
     // Simulate network delay for fetching initial data
     const timer = setTimeout(() => {
-      setPatients([
+      const saved = localStorage.getItem("noor_patients");
+      if (saved) {
+        try {
+          setPatients(JSON.parse(saved));
+          setIsLoading(false);
+          return;
+        } catch (err) {
+          console.error("Error loading patients from local storage", err);
+        }
+      }
+      const defaults = [
         { 
           id: "1", 
           full_name: "Ali Mohammed", 
@@ -202,7 +272,9 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
         },
         { id: "4", full_name: "Layla Khalid", phone: "07701122334", age: 19, last_visit: "2026-05-15", outstanding: 0, gender: "female", visits: [] as any[] },
         { id: "5", full_name: "Omar Sharif", phone: "07812233445", age: 52, last_visit: "2026-05-01", outstanding: 15000, gender: "male", visits: [] as any[] },
-      ]);
+      ];
+      setPatients(defaults);
+      localStorage.setItem("noor_patients", JSON.stringify(defaults));
       setIsLoading(false);
     }, 1500); // 1.5s delay to show skeleton loaders
 
@@ -211,12 +283,15 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ClinicContext.Provider value={{ 
-      lang, setLang, user, setUser, clinic, setClinic, currentSection, setCurrentSection, t, 
+      lang, setLang, user, setUser, clinic, setClinic, currentSection, setCurrentSection,
+      inventoryFilter, setInventoryFilter, t, 
       auditLogs, logAction, followupCount, setFollowupCount,
       triggerAddPatient, setTriggerAddPatient,
       patients, setPatients, isLoading, setIsLoading,
       lensCatalog, setLensCatalog,
-      lenses, setLenses, frames, setFrames
+      lenses, setLenses, frames, setFrames,
+      isQuickSellOpen, setIsQuickSellOpen,
+      inventoryTrigger, setInventoryTrigger
     }}>
       {children}
     </ClinicContext.Provider>

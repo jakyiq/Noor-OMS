@@ -1,5 +1,5 @@
 import React from "react";
-import { Users, DollarSign, AlertCircle, TrendingUp, ArrowUpRight, ArrowDownRight, Bell, Package, Calendar } from "lucide-react";
+import { Users, DollarSign, AlertCircle, TrendingUp, ArrowUpRight, ArrowDownRight, Bell, Package, Calendar, ShoppingCart } from "lucide-react";
 import { useClinic } from "../context/ClinicContext";
 import { formatIQD, cn } from "../lib/utils";
 import { motion } from "motion/react";
@@ -26,7 +26,7 @@ const data = [
 ];
 
 export function Dashboard() {
-  const { t, lang, setCurrentSection, isLoading } = useClinic();
+  const { t, lang, setCurrentSection, setInventoryFilter, setIsQuickSellOpen, isLoading, patients } = useClinic();
 
   const [chartRange, setChartRange] = React.useState<"weekly" | "monthly" | "yearly">("weekly");
   const [time, setTime] = React.useState(new Date());
@@ -35,6 +35,54 @@ export function Dashboard() {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const recentSales = React.useMemo(() => {
+    const list: any[] = [];
+    if (!patients || !Array.isArray(patients)) return [];
+
+    patients.forEach(p => {
+      if (p.visits && Array.isArray(p.visits)) {
+        p.visits.forEach(v => {
+          list.push({
+            id: v.id,
+            patientId: p.id,
+            name: p.id === "walkin_retail" ? (v.customer_name || (lang === "ar" ? "زبون سفري مباشر" : "Walk-in Customer")) : p.full_name,
+            visit_date: v.visit_date,
+            type: v.diagnosis || (p.id === "walkin_retail" ? (lang === "ar" ? "بيع مباشر بالتجزئة" : "Quick POS Sale") : (lang === "ar" ? "فحص سريري" : "Clinic RX Visit")),
+            price: v.total_amount || 0,
+            amount_paid: v.amount_paid || 0,
+            remaining: v.remaining || 0
+          });
+        });
+      }
+    });
+
+    return list.sort((a, b) => {
+      const dateA = new Date(a.visit_date).getTime();
+      const dateB = new Date(b.visit_date).getTime();
+      if (dateA !== dateB) return dateB - dateA;
+      return b.id.localeCompare(a.id);
+    }).slice(0, 5); // Take top 5 recent sales/transactions
+  }, [patients, lang]);
+
+  const getFriendlyDate = (dateStr: string) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const yesterdayDate = new Date();
+      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+      const yesterday = yesterdayDate.toISOString().split("T")[0];
+
+      if (dateStr === today) {
+        return lang === "ar" ? "اليوم" : "Today";
+      } else if (dateStr === yesterday) {
+        return lang === "ar" ? "أمس" : "Yesterday";
+      } else {
+        return dateStr;
+      }
+    } catch (e) {
+      return dateStr;
+    }
+  };
 
   const getGreeting = () => {
     const hour = time.getHours();
@@ -194,6 +242,55 @@ export function Dashboard() {
       </div>
 
 
+      {/* Premium Quick POS Sell Action Row */}
+      <motion.div
+        initial={{ opacity: 0, y: -15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        onClick={() => setIsQuickSellOpen(true)}
+        className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-r from-burgundy via-[#2c0b11] to-ink border-2 border-gold/40 hover:border-gold cursor-pointer group shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 select-none"
+      >
+        {/* Decorative ambient glowing backdrops */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gold/10 rounded-full blur-2xl group-hover:bg-gold/25 transition-all duration-500 pointer-events-none" />
+        <div className="absolute -bottom-4 left-10 w-24 h-24 bg-rose-500/10 rounded-full blur-xl pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gold text-ink flex items-center justify-center shrink-0 shadow-lg shadow-gold/20 group-hover:scale-110 transition-transform duration-300">
+              <ShoppingCart size={22} className="stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold text-gold tracking-widest uppercase font-[Verdana] bg-white/5 px-2.5 py-0.5 rounded border border-gold/15">
+                  {lang === 'ar' ? 'بوابة مبيعات سريعة' : 'POS EXPRESSWAY'}
+                </span>
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded font-[Verdana] animate-pulse tracking-wide">
+                  {lang === 'ar' ? 'فوري متاح' : 'LIVE CONSOLE'}
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-serif font-bold text-white mt-1 group-hover:text-gold transition-colors tracking-tight">
+                {lang === 'ar' ? 'تسجيل مبيعات سريعة فورية (بدون بطاقة مريض)' : 'Launch Quick POS Retail Window'}
+              </h3>
+              <p className="text-xs text-white/70 max-w-xl font-sans leading-relaxed mt-0.5">
+                {lang === 'ar' 
+                  ? 'قم بإصدار تفريغ فوري من الرفوف، الفوترة الفورية واحتساب الفكة والربح دون الحاجة لتسجيل ملف مريض مسبقاً.' 
+                  : 'Skip formal patient clinical workflow. Immediately process direct sales of lenses, spectacles, frames, or accessories.'}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3 self-stretch sm:self-auto justify-end shrink-0">
+            <span className="text-xs font-[Verdana] font-bold text-gold bg-white/5 border border-gold/30 rounded-xl px-4 py-2 hover:bg-gold hover:text-ink transition-all hidden sm:inline-block">
+              {lang === 'ar' ? 'افتح الكاشير' : 'Open Register'}
+            </span>
+            <div className="w-10 h-10 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-gold group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 duration-300 shrink-0">
+              <ArrowUpRight size={20} className={lang === 'ar' ? '-scale-x-100' : ''} />
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         {stats.map((stat, idx) => (
@@ -328,99 +425,63 @@ export function Dashboard() {
           transition={{ delay: 0.7 }}
           className="lg:col-span-2 card p-4 sm:p-6"
         >
-          <div className="mb-6">
-            <h3 className="text-lg font-serif font-bold text-ink">{t("recent_patients")}</h3>
-            <p className="text-[10px] text-ink-light uppercase tracking-widest font-bold mt-1">{lang === 'ar' ? 'أحدث الفحوصات' : 'Latest check-ups'}</p>
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-serif font-bold text-ink">{lang === 'ar' ? 'سجل المبيعات الأخيرة' : 'Recent Activity / Sales'}</h3>
+              <p className="text-[10px] text-ink-light uppercase tracking-widest font-bold mt-1">
+                {lang === 'ar' ? 'تحصيلات الصندوق والعيادة الفورية' : 'Latest POS and clinical inflows'}
+              </p>
+            </div>
+            <span className="text-[9px] font-bold text-burgundy bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg">
+              {lang === "ar" ? "نشط" : "LIVE FEED"}
+            </span>
           </div>
 
           <div className="flex flex-col">
-            {[
-              { name: "Ali Al-Fahad", time: "10 mins ago", type: "Progressive", price: 120000 },
-              { name: "Sarah Jamil", time: "2 hours ago", type: "Single Vision", price: 45000 },
-              { name: "Mohammed Hassan", time: "4 hours ago", type: "Frames only", price: 85000 },
-              { name: "Noor Khalid", time: "Yesterday", type: "Reading", price: 35000 },
-            ].map((patient, i) => (
-              <div key={i} onClick={() => setCurrentSection("patients")} className="flex items-center gap-3 sm:gap-4 group cursor-pointer hover:bg-cream/30 py-3 px-1 sm:px-2 rounded-lg transition-all border-b border-cream-border border-dashed last:border-b-0">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-burgundy-pale text-burgundy flex items-center justify-center font-bold text-sm shrink-0 border border-burgundy/10">
-                  {patient.name[0]}
-                </div>
-                <div className="flex-1 min-w-0 pe-2">
-                  <h4 className="text-[13px] sm:text-sm font-bold text-ink truncate group-hover:text-burgundy transition-colors">{patient.name}</h4>
-                  <p className="text-[10px] text-ink-light truncate">{patient.type}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs font-bold text-burgundy tracking-tight tabular-nums">{formatIQD(patient.price)}</p>
-                  <p className="text-[9px] sm:text-[10px] text-ink-light mt-0.5">{patient.time}</p>
-                </div>
+            {recentSales.length === 0 ? (
+              <div className="p-8 text-center text-ink-light italic text-xs">
+                {lang === "ar" ? "لا توجد أي تحصيلات مبيعات مسجلة حتى الآن." : "No documented transactions found yet."}
               </div>
-            ))}
+            ) : (
+              recentSales.map((sale, i) => (
+                <div 
+                  key={sale.id || i} 
+                  onClick={() => {
+                    if (sale.patientId === "walkin_retail") {
+                      setCurrentSection("reports");
+                    } else {
+                      setCurrentSection("patients");
+                    }
+                  }} 
+                  className="flex items-center gap-3 sm:gap-4 group cursor-pointer hover:bg-cream/30 py-3 px-1 sm:px-2 rounded-lg transition-all border-b border-cream-border border-dashed last:border-b-0"
+                >
+                  {sale.patientId === "walkin_retail" ? (
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0 border border-emerald-200">
+                      <ShoppingCart size={14} className="stroke-[2.5]" />
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-burgundy-pale text-burgundy flex items-center justify-center font-bold text-sm shrink-0 border border-burgundy/10">
+                      {sale.name ? sale.name[0] : "?"}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0 pe-2">
+                    <h4 className="text-[13px] sm:text-sm font-bold text-ink truncate group-hover:text-burgundy transition-colors">
+                      {sale.name}
+                    </h4>
+                    <p className="text-[10px] text-ink-light truncate font-medium" title={sale.type}>{sale.type}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-bold text-burgundy tracking-tight tabular-nums">{formatIQD(sale.price)}</p>
+                    <p className="text-[9px] sm:text-[10px] text-ink-light mt-0.5">{getFriendlyDate(sale.visit_date)}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           <button onClick={() => setCurrentSection("patients")} className="w-full mt-6 py-2 text-xs font-bold text-burgundy border-t border-cream-border pt-4 hover:text-burgundy-soft transition-colors tracking-widest uppercase cursor-pointer">
             {t("view_all")}
           </button>
-        </motion.div>
-      </div>
-
-      {/* Mini Overview Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 lg:gap-6 mt-4 sm:mt-6">
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-          onClick={() => setCurrentSection("inventory")}
-          className="card p-4 flex items-center justify-between cursor-pointer hover:border-burgundy/20 group transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-              <Package size={20} />
-            </div>
-            <div>
-              <p className="text-[10px] text-ink-light uppercase tracking-widest font-bold mb-0.5">{lang === 'ar' ? 'تنبيهات المخزون' : 'Low Stock Items'}</p>
-              <h4 className="text-sm font-bold text-ink group-hover:text-burgundy transition-colors">12 {lang === 'ar' ? 'عنصر' : 'Items'}</h4>
-            </div>
-          </div>
-          <div className="w-8 h-8 rounded-full bg-cream border border-cream-border flex items-center justify-center text-burgundy opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
-            <ArrowUpRight size={16} className={lang === 'ar' ? '-scale-x-100' : ''} />
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.85 }}
-          onClick={() => setCurrentSection("followups")}
-          className="card p-4 flex items-center justify-between cursor-pointer hover:border-burgundy/20 group transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Calendar size={20} />
-            </div>
-            <div>
-              <p className="text-[10px] text-ink-light uppercase tracking-widest font-bold mb-0.5">{lang === 'ar' ? 'مراجعات اليوم' : 'Today\'s Follow-ups'}</p>
-              <h4 className="text-sm font-bold text-ink group-hover:text-burgundy transition-colors">5 {lang === 'ar' ? 'مرضى' : 'Patients'}</h4>
-            </div>
-          </div>
-          <div className="w-8 h-8 rounded-full bg-cream border border-cream-border flex items-center justify-center text-burgundy opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
-            <ArrowUpRight size={16} className={lang === 'ar' ? '-scale-x-100' : ''} />
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.9 }}
-          className="card p-4 flex items-center justify-between cursor-pointer hover:border-burgundy/20 group transition-all border-dashed border-2 bg-transparent hover:bg-white"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cream border-2 border-cream-border text-ink flex items-center justify-center shrink-0 group-hover:border-burgundy/20 group-hover:text-burgundy transition-all">
-              <Bell size={20} />
-            </div>
-            <div>
-              <p className="text-[10px] text-ink-light uppercase tracking-widest font-bold mb-0.5">{lang === 'ar' ? 'مهام سريعة' : 'Quick Actions'}</p>
-              <h4 className="text-sm font-bold text-ink group-hover:text-burgundy transition-colors">{lang === 'ar' ? 'إضافة موعد' : 'Add Appointment'}</h4>
-            </div>
-          </div>
         </motion.div>
       </div>
     </div>

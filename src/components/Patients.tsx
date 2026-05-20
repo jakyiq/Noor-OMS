@@ -73,6 +73,11 @@ export function Patients() {
 
   const filteredPatients = useMemo(() => {
     let result = patients.filter(p => {
+      // Exclude direct POS walk-ins if configured in settings
+      if (clinic?.exclude_pos_from_patient_menu && p.id === "walkin_retail") {
+        return false;
+      }
+
       // Name/Phone search
       const matchesSearch = p.full_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                            p.phone.includes(searchTerm);
@@ -1322,7 +1327,7 @@ export function Patients() {
                 <AlertTriangle size={32} className="text-rose-600" />
               </div>
               <h3 className="text-xl font-bold text-ink mb-2">
-                {lang === 'ar' ? 'حذف مريض' : 'Delete Patient'}
+                {lang === 'ar' ? 'حذف مراجع' : 'Delete Patient'}
               </h3>
               <p className="text-sm text-ink-light mb-6">
                 {lang === 'ar' 
@@ -1837,7 +1842,7 @@ export function Patients() {
                 <AlertTriangle size={32} className="text-rose-600" />
               </div>
               <h3 className="text-xl font-bold text-ink mb-2">
-                {lang === 'ar' ? 'حذف مريض' : 'Delete Patient'}
+                {lang === 'ar' ? 'حذف مراجع' : 'Delete Patient'}
               </h3>
               <p className="text-sm text-ink-light mb-6">
                 {lang === 'ar' 

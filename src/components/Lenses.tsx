@@ -28,6 +28,7 @@ export function Lenses() {
   const { t, lang, lensCatalog, setLensCatalog, lenses, setLenses } = useClinic();
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isFlushConfirmOpen, setIsFlushConfirmOpen] = useState(false);
   const [isAddEditOpen, setIsAddEditOpen] = useState(false);
   const [editingLens, setEditingLens] = useState<LensItem | null>(null);
 
@@ -256,6 +257,16 @@ export function Lenses() {
           </p>
         </div>
         <div className="flex gap-2">
+          {lenses.length > 0 && (
+            <button 
+              onClick={() => setIsFlushConfirmOpen(true)} 
+              className="px-4 py-3 flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 font-bold hover:bg-rose-100 hover:text-rose-750 transition-all shadow-sm"
+              title={lang === "ar" ? "حذف جميع العدسات الحالية" : "Delete all current lenses"}
+            >
+              <Trash2 size={16} />
+              <span className="hidden md:inline">{lang === "ar" ? "تفريغ المستودع" : "Clear Catalog"}</span>
+            </button>
+          )}
           <button onClick={() => {
             setWizTypes(lensCatalog?.type?.[0] ? [lensCatalog.type[0].value] : []);
             setWizMaterials(lensCatalog?.material?.[0] ? [lensCatalog.material[0].value] : []);
@@ -690,6 +701,66 @@ export function Lenses() {
                           <input type="number" value={wizMinStock} onChange={e => setWizMinStock(Number(e.target.value))} className="input-field w-full min-w-0 text-center font-mono py-2 lg:py-2.5 text-sm sm:text-base lg:text-lg border-amber-200 focus:border-amber-500 focus:ring-amber-500/20 bg-white" />
                         </div>
                       </div>
+
+                      {/* Database Sync Mode */}
+                      <div className="pt-4 mt-2 border-t border-cream-border/60">
+                        <label className="block text-[10px] lg:text-xs font-bold text-ink-light uppercase tracking-widest mb-3">
+                          {lang === 'ar' ? '٤. طريقة تحديث الكتالوج' : '4. Catalog Synchronization Mode'}
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setWizClearExisting(false)}
+                            className={cn(
+                              "p-3 rounded-xl border flex flex-col items-start gap-1 text-left transition-all",
+                              !wizClearExisting
+                                ? "bg-emerald-50/50 border-emerald-500 text-ink ring-2 ring-emerald-500/15"
+                                : "bg-white border-cream-border text-ink hover:bg-cream"
+                            )}
+                          >
+                            <span className="text-xs font-bold font-sans">
+                              {lang === 'ar' ? 'إضافة وتوسيع الكتالوج' : 'Append & Expand'}
+                            </span>
+                            <span className="text-[9px] text-ink-light leading-snug">
+                              {lang === 'ar' ? 'العدسات الجديدة تضاف بجانب المخزون الحالي' : 'Keep existing stock and insert new items.'}
+                            </span>
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => setWizClearExisting(true)}
+                            className={cn(
+                              "p-3 rounded-xl border flex flex-col items-start gap-1 text-left transition-all",
+                              wizClearExisting
+                                ? "bg-rose-50/50 border-rose-500 text-rose-950 ring-2 ring-rose-500/15"
+                                : "bg-white border-cream-border text-ink hover:bg-cream"
+                            )}
+                          >
+                            <span className="text-xs font-bold font-sans text-rose-700">
+                              {lang === 'ar' ? 'مسح الكتالوج بالكامل' : 'Clear & Rebuild'}
+                            </span>
+                            <span className="text-[9px] text-rose-600/80 leading-snug">
+                              {lang === 'ar' ? 'تنظيف كافة المخزون وتوليد عدسات جديدة' : 'Permanently delete all existing lenses and regenerate.'}
+                            </span>
+                          </button>
+                        </div>
+
+                        {wizClearExisting && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: 4 }} 
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-xl leading-normal flex items-start gap-2.5 animate-in fade-in"
+                          >
+                            <AlertTriangle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                            <div className="text-[10px] text-rose-800">
+                              <span className="font-bold uppercase tracking-wider block mb-0.5">{lang === 'ar' ? 'تحذير تدمير البيانات' : 'Warning: High Impact Operation'}</span>
+                              {lang === 'ar' 
+                                ? 'سيتم مسح جميع سجلات العدسات المخزنة في النظام نهائياً بمجرد نقر زر إنتاج العدسات.'
+                                : 'All currently cataloged lenses will be deleted permanently when you commit. Unsaved changes will be lost.'}
+                            </div>
+                          </motion.div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -701,10 +772,9 @@ export function Lenses() {
             <div className="px-4 md:px-5 lg:px-8 py-4 lg:py-5 border-t border-cream-border bg-cream/30 flex flex-col md:flex-row items-center justify-between gap-3 lg:gap-4 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))] lg:pb-5">
               <div className="text-[10px] md:text-xs lg:text-sm font-medium text-ink-mid text-center md:text-left flex flex-col gap-1">
                 <span>Will generate approximately <strong className="text-burgundy font-bold text-sm md:text-base lg:text-lg font-mono">{estimatedCount}</strong> lens entries.</span>
-                <label className="flex items-center gap-2 cursor-pointer mt-1 md:justify-start justify-center">
-                  <input type="checkbox" checked={wizClearExisting} onChange={e => setWizClearExisting(e.target.checked)} className="rounded border-cream-border text-burgundy focus:ring-burgundy/20" />
-                  <span className="text-rose-600 font-bold uppercase tracking-wider text-[10px]">{lang === 'ar' ? 'حذف جميع العدسات الحالية' : 'Clear all existing lenses'}</span>
-                </label>
+                {wizClearExisting && (
+                  <span className="text-rose-600 font-bold uppercase tracking-wider text-[10px] animate-pulse">{lang === 'ar' ? 'تنبيه: سيتم تصفير المستودع' : 'DESTRUCTION WARNING: CURRENT LENSES WILL BE WIPED'}</span>
+                )}
               </div>
               <div className="flex flex-row gap-2 sm:gap-3 w-full md:w-auto">
                 <button onClick={() => setIsWizardOpen(false)} className="flex-1 md:flex-none py-2.5 lg:py-3 px-4 lg:px-6 text-xs sm:text-sm whitespace-nowrap font-bold text-ink-mid hover:text-ink bg-cream rounded-xl hover:bg-cream-dark transition-colors border border-cream-border">Cancel</button>
@@ -952,6 +1022,55 @@ export function Lenses() {
                 setRestockLens(null);
                 setRestockAmount(10);
               }}
+              className="absolute top-4 end-4 text-ink-light hover:text-ink transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Flush Confirmation Modal */}
+      {isFlushConfirmOpen && (
+        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-white rounded-2xl shadow-xl w-full max-w-[24rem] overflow-hidden opacity-100"
+          >
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={32} className="text-rose-600 animate-bounce" />
+              </div>
+              <h3 className="text-xl font-bold text-ink mb-2">
+                {lang === 'ar' ? 'تفريغ مستودع العدسات' : 'Clear All Lenses'}
+              </h3>
+              <p className="text-sm text-ink-light mb-6">
+                {lang === 'ar' 
+                  ? 'تحذير: هل أنت متأكد من أنك تريد حذف كافة سجلات العدسات الحالية وإفراغ الكتالوج بالكامل؟ هذا الإجراء لا يمكن التراجع عنه.' 
+                  : 'Are you absolutely sure you want to permanently wipe your entire lens catalog? This will delete all cataloged items and cannot be undone.'}
+              </p>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setIsFlushConfirmOpen(false)}
+                  className="flex-1 py-3 bg-cream hover:bg-cream-dark text-ink-mid font-bold rounded-xl transition-all"
+                >
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button 
+                  onClick={() => {
+                    setLenses([]);
+                    setIsFlushConfirmOpen(false);
+                  }}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-rose-600/20"
+                >
+                  {lang === 'ar' ? 'تأكيد الحذف النهائي' : 'Yes, WIPE ALL'}
+                </button>
+              </div>
+            </div>
+            <button 
+              onClick={() => setIsFlushConfirmOpen(false)}
               className="absolute top-4 end-4 text-ink-light hover:text-ink transition-colors p-1"
             >
               <X size={20} />

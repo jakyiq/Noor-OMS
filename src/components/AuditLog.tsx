@@ -51,7 +51,7 @@ export function AuditLog() {
 
   const getEntityLabel = (type: string) => {
     switch (type) {
-      case "patient": return lang === 'ar' ? 'مريض' : 'Patient';
+      case "patient": return lang === 'ar' ? 'مراجع' : 'Patient';
       case "visit": return lang === 'ar' ? 'مراجعة' : 'Visit';
       case "prescription": return lang === 'ar' ? 'وصفة' : 'Prescription';
       case "inventory": return lang === 'ar' ? 'مخزن' : 'Inventory';
@@ -106,7 +106,7 @@ export function AuditLog() {
             className="border-2 border-cream-border bg-white rounded-xl px-4 py-3 text-sm font-medium text-ink-mid focus:border-burgundy outline-none transition-all cursor-pointer"
           >
             <option value="all">{lang === 'ar' ? 'جميع الكيانات' : 'All Entities'}</option>
-            <option value="patient">{lang === 'ar' ? 'المرضى' : 'Patients'}</option>
+            <option value="patient">{lang === 'ar' ? 'المراجعين' : 'Patients'}</option>
             <option value="visit">{lang === 'ar' ? 'المراجعات' : 'Visits'}</option>
             <option value="prescription">{lang === 'ar' ? 'الوصفات' : 'Prescriptions'}</option>
             <option value="inventory">{lang === 'ar' ? 'المخزن' : 'Inventory'}</option>

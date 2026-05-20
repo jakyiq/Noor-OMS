@@ -15,7 +15,9 @@ import { Lenses } from "./components/Lenses";
 import { Frames } from "./components/Frames";
 import { AuditLog } from "./components/AuditLog";
 import { Settings } from "./components/Settings";
+import { Reports } from "./components/Reports";
 import { Auth } from "./components/Auth";
+import { QuickSellModal } from "./components/QuickSellModal";
 import { ClinicProvider, useClinic } from "./context/ClinicContext";
 import { cn } from "./lib/utils";
 import { useScrollLock } from "./hooks/useScrollLock";
@@ -49,6 +51,8 @@ function AppContent() {
         return <AuditLog />;
       case "settings":
         return <Settings />;
+      case "reports":
+        return <Reports />;
       default:
         return (
           <div className="flex flex-col items-center justify-center min-h-[60vh] text-ink-light space-y-4">
@@ -112,6 +116,9 @@ function AppContent() {
           </div>
         </footer>
       </div>
+
+      {/* Global POS Quick Sell Modal */}
+      <QuickSellModal />
     </div>
   );
 }
