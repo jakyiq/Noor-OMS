@@ -1,5 +1,9 @@
 export const TRANSLATIONS = {
   ar: {
+    main_nav: "الرئيسية",
+    inventory_nav: "المخزون",
+    reports_settings_nav: "التقارير والإعدادات",
+    inventory: "المخزون",
     dashboard: "لوحة التحكم",
     patients: "المراجعين",
     followups: "المتابعات",
@@ -70,7 +74,6 @@ export const TRANSLATIONS = {
     total_paid_summary: "إجمالي المدفوعات",
     total_amount_summary: "إجمالي المبالغ",
     financial_summary: "الملخص المالي",
-    inventory: "المخزن",
     stock_level: "مستوى المخزون",
     reorder_point: "نقطة إعادة الطلب",
     suppliers: "الموردين",
@@ -100,6 +103,10 @@ export const TRANSLATIONS = {
     print_a5: "طباعة A5",
   },
   en: {
+    main_nav: "Main",
+    inventory_nav: "Inventory",
+    reports_settings_nav: "Reports & Settings",
+    inventory: "Inventory",
     dashboard: "Dashboard",
     patients: "Patients",
     followups: "Follow-ups",
@@ -170,7 +177,6 @@ export const TRANSLATIONS = {
     total_paid_summary: "Total Paid",
     total_amount_summary: "Total Amount",
     financial_summary: "Financial Summary",
-    inventory: "Inventory",
     stock_level: "Stock Level",
     reorder_point: "Reorder Point",
     suppliers: "Suppliers",

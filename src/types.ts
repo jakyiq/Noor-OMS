@@ -53,6 +53,20 @@ export interface Visit {
   // ... other fields as seen in the user's JS
 }
 
+export interface FrameItem {
+  id: string;
+  brand: string;
+  model: string;
+  color: string;
+  type: string; // Full Rim, Half Rim, Rimless
+  material: string;
+  shape: string;
+  quantity: number;
+  min_stock: number;
+  cost_price: number;
+  sell_price: number;
+}
+
 export interface LensItem {
   id: string;
   lens_type: string;
@@ -80,6 +94,8 @@ export interface LensCatalog {
   coating: CatalogItem[];
   frame_type: CatalogItem[];
   frame_material: CatalogItem[];
+  frame_brand: CatalogItem[];
+  frame_shape: CatalogItem[];
 }
 
 export type Section = "dashboard" | "patients" | "followups" | "prescriptions" | "lenses" | "frames" | "inventory" | "reports" | "settings" | "audit" | "superadmin";

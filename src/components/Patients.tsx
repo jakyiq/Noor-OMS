@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { UserPlus, Search, MoreHorizontal, Phone, Clock, FileText, ChevronRight, ChevronDown, Filter, ArrowLeft, Calendar, ClipboardList, Wallet, Plus, X, Trash2, Printer, History, ArrowDown, ArrowUp, Pencil, Banknote, CalendarClock } from "lucide-react";
+import { UserPlus, Search, MoreHorizontal, Phone, Clock, FileText, ChevronRight, ChevronDown, Filter, ArrowLeft, Calendar, ClipboardList, Wallet, Plus, X, Trash2, Printer, History, ArrowDown, ArrowUp, Pencil, Banknote, CalendarClock, AlertTriangle } from "lucide-react";
 import { useClinic } from "../context/ClinicContext";
 import { formatIQD, cn } from "../lib/utils";
 import { motion } from "motion/react";
@@ -9,7 +9,7 @@ import { useScrollLock } from "../hooks/useScrollLock";
 import { NewVisitModal } from "./NewVisitModal";
 
 export function Patients() {
-  const { t, lang, logAction, triggerAddPatient, currentSection, patients, setPatients, setCurrentSection, clinic } = useClinic();
+  const { t, lang, logAction, triggerAddPatient, currentSection, patients, setPatients, setCurrentSection, clinic, isLoading, setLenses, setFrames } = useClinic();
   const defaultFollowUpMonths = clinic?.default_followup_months ?? 3;
   const [searchTerm, setSearchTerm] = useState("");
   const [genderFilter, setGenderFilter] = useState("all");
@@ -28,8 +28,15 @@ export function Patients() {
     os: { sph: "", sphSign: "+", cyl: "", cylSign: "+", axis: "", add: "", va: "6/6", bcva: "6/6" }
   });
   const [printingVisit, setPrintingVisit] = useState<any>(null);
+  const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
+  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+  const [visitToEdit, setVisitToEdit] = useState<any>(null);
+  const [topUpPatientId, setTopUpPatientId] = useState<string | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [deletePatientConfirm, setDeletePatientConfirm] = useState<any | null>(null);
+  const [deleteVisitConfirmId, setDeleteVisitConfirmId] = useState<string | null>(null);
 
-  useScrollLock(isModalOpen || !!printingVisit || isOldPrescriptionModalOpen || isNewVisitModalOpen);
+  useScrollLock(isModalOpen || !!printingVisit || isOldPrescriptionModalOpen || isNewVisitModalOpen || !!deletePatientConfirm || !!deleteVisitConfirmId);
 
   useEffect(() => {
     if (triggerAddPatient > 0) {
@@ -52,11 +59,7 @@ export function Patients() {
       window.print();
     }, 100);
   };
-  const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
-  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
-  const [visitToEdit, setVisitToEdit] = useState<any>(null);
-  const [topUpPatientId, setTopUpPatientId] = useState<string | null>(null);
-  const [topUpAmount, setTopUpAmount] = useState("");
+
   const [formData, setFormData] = useState({
     full_name: "",
     phone: "",
@@ -110,6 +113,8 @@ export function Patients() {
     return result;
   }, [searchTerm, genderFilter, debtFilter, visitFilter, patients, patientSortField, patientSortOrder]);
 
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  
   const handleSavePatient = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -168,43 +173,51 @@ export function Patients() {
 
   const handleDeletePatient = (e: React.MouseEvent, patient: any) => {
     e.stopPropagation();
-    if (confirm(lang === 'ar' ? `هل أنت متأكد من حذف ${patient.full_name}؟` : `Are you sure you want to delete ${patient.full_name}?`)) {
-      setPatients(patients.filter(p => p.id !== patient.id));
-      logAction({
-        action: "delete",
-        entity_type: "patient",
-        entity_id: patient.id,
-        entity_name: patient.full_name,
-        details: `Deleted patient record for ${patient.full_name}`
-      });
-      if (selectedPatientId === patient.id) {
-        setSelectedPatientId(null);
-      }
+    setDeletePatientConfirm({ id: patient.id, name: patient.full_name });
+  };
+
+  const confirmDeletePatient = () => {
+    if (!deletePatientConfirm) return;
+    setPatients(patients.filter(p => p.id !== deletePatientConfirm.id));
+    logAction({
+      action: "delete",
+      entity_type: "patient",
+      entity_id: deletePatientConfirm.id,
+      entity_name: deletePatientConfirm.name,
+      details: `Deleted patient record for ${deletePatientConfirm.name}`
+    });
+    if (selectedPatientId === deletePatientConfirm.id) {
+      setSelectedPatientId(null);
     }
+    setDeletePatientConfirm(null);
   };
 
   const handleDeleteVisit = (visitId: string) => {
     if (!selectedPatient) return;
-    const visit = selectedPatient.visits?.find((v: any) => v.id === visitId);
+    setDeleteVisitConfirmId(visitId);
+  };
 
-    if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذه المراجعة؟' : 'Are you sure you want to delete this visit?')) {
-      setPatients(patients.map(p => {
-        if (p.id === selectedPatient.id) {
-          return {
-            ...p,
-            visits: p.visits?.filter((v: any) => v.id !== visitId)
-          };
-        }
-        return p;
-      }));
-      logAction({
-        action: "delete",
-        entity_type: "visit",
-        entity_id: visitId,
-        entity_name: `Visit for ${selectedPatient.full_name}`,
-        details: `Deleted visit record from ${visit?.visit_date} for ${selectedPatient.full_name}`
-      });
-    }
+  const confirmDeleteVisit = () => {
+    if (!selectedPatient || !deleteVisitConfirmId) return;
+    const visit = selectedPatient.visits?.find((v: any) => v.id === deleteVisitConfirmId);
+    setPatients(patients.map(p => {
+      if (p.id === selectedPatient.id) {
+        return {
+          ...p,
+          outstanding: Math.max(0, p.outstanding - (visit?.remaining || 0)),
+          visits: p.visits?.filter((v: any) => v.id !== deleteVisitConfirmId)
+        };
+      }
+      return p;
+    }));
+    logAction({
+      action: "delete",
+      entity_type: "visit",
+      entity_id: deleteVisitConfirmId,
+      entity_name: `Visit for ${selectedPatient.full_name}`,
+      details: `Deleted visit record from ${visit?.visit_date} for ${selectedPatient.full_name}`
+    });
+    setDeleteVisitConfirmId(null);
   };
 
   const handleTopUpSubmit = (e: React.FormEvent) => {
@@ -262,6 +275,38 @@ export function Patients() {
     setTopUpAmount("");
   };
 
+  // Helper for Auto-Diagnosis based on refractive errors
+  const generateAutoDiagnosis = (rxData: any) => {
+    if (!rxData) return "";
+    const getErrors = (eye: any) => {
+      if (!eye) return [];
+      let errors = [];
+      const sphNum = parseFloat(eye.sph || 0);
+      const isMyopia = eye.sphSign === "-" && Math.abs(sphNum) > 0;
+      const isHyperopia = eye.sphSign === "+" && Math.abs(sphNum) > 0;
+      
+      if (isMyopia) errors.push("Myopia");
+      else if (isHyperopia) errors.push("Hyperopia");
+
+      const cylNum = parseFloat(eye.cyl || 0);
+      if (Math.abs(cylNum) > 0) errors.push("Astigmatism");
+
+      const addNum = parseFloat(eye.add || 0);
+      if (addNum > 0) errors.push("Presbyopia");
+
+      return errors;
+    };
+
+    const odErrors = rxData.od ? getErrors(rxData.od) : [];
+    const osErrors = rxData.os ? getErrors(rxData.os) : [];
+
+    let textParts = [];
+    if (odErrors.length > 0) textParts.push(`OD (R): ${odErrors.join(", ")}`);
+    if (osErrors.length > 0) textParts.push(`OS (L): ${osErrors.join(", ")}`);
+
+    return textParts.length > 0 ? `\n\n--- Diagnosis ---\n${textParts.join("\n")}` : "";
+  };
+
   const handleSaveOldPrescription = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId || !selectedPatient) return;
@@ -269,12 +314,14 @@ export function Patients() {
     // Create a diagnosis string out of the table data
     const od = oldPrescriptionData.od;
     const os = oldPrescriptionData.os;
-    const diagnosisText = [
+    const rxSummary = [
       lang === 'ar' ? "وصفة طبية سابقة:" : "Old Prescription:",
       `OD (R): SPH: ${od.sphSign}${od.sph || '0.00'}, CYL: ${od.cylSign}${od.cyl || '0.00'}, AXIS: ${od.axis || '0'}, ADD: +${od.add || '0.00'}, VA: ${od.va || '-'}, BCVA: ${od.bcva || '-'}`,
       `OS (L): SPH: ${os.sphSign}${os.sph || '0.00'}, CYL: ${os.cylSign}${os.cyl || '0.00'}, AXIS: ${os.axis || '0'}, ADD: +${os.add || '0.00'}, VA: ${os.va || '-'}, BCVA: ${os.bcva || '-'}`,
       oldPrescriptionData.ipd ? `IPD: ${oldPrescriptionData.ipd}` : "",
     ].filter(Boolean).join('\n');
+
+    const diagnosisText = rxSummary + generateAutoDiagnosis({ od, os });
 
     const newVisit = {
       id: Math.random().toString(36).substr(2, 9),
@@ -341,12 +388,20 @@ export function Patients() {
       nextVisitStr = baseDateObj.toISOString().split('T')[0];
     }
 
+    const baseDiagnosis = visitToEdit?.diagnosis ? visitToEdit.diagnosis.split('\n\n--- Diagnosis ---')[0] : (lang === 'ar' ? 'بطاقة فحص جديدة' : 'New Prescription');
+    
+    const rxDataForDiagnosis = {
+      od: visitData.eyesCount !== 'os' ? visitData.od : null,
+      os: visitData.eyesCount !== 'od' ? visitData.os : null,
+    };
+    const finalDiagnosis = baseDiagnosis + generateAutoDiagnosis(rxDataForDiagnosis);
+
     const newVisitObj = {
       id: editingVisitId || Math.random().toString(36).substr(2, 9),
       patient_id: selectedPatientId,
       visit_date: baseDate,
       next_visit_date: nextVisitStr,
-      diagnosis: visitToEdit?.diagnosis || (lang === 'ar' ? 'بطاقة فحص جديدة' : 'New Prescription'),
+      diagnosis: finalDiagnosis,
       total_amount: totalSelectedCost,
       amount_paid: paid,
       remaining: Math.max(0, totalSelectedCost - paid),
@@ -370,6 +425,18 @@ export function Patients() {
       },
       notes: visitData.notes
     };
+
+    if (!editingVisitId) {
+      if (visitData.matchedOdLensId) {
+        setLenses(prev => prev.map(l => l.id === visitData.matchedOdLensId ? { ...l, quantity: Math.max(0, l.quantity - 1) } : l));
+      }
+      if (visitData.matchedOsLensId) {
+        setLenses(prev => prev.map(l => l.id === visitData.matchedOsLensId ? { ...l, quantity: Math.max(0, l.quantity - 1) } : l));
+      }
+      if (visitData.matchedFrameId) {
+        setFrames(prev => prev.map(f => f.id === visitData.matchedFrameId ? { ...f, quantity: Math.max(0, f.quantity - 1) } : f));
+      }
+    }
 
     setPatients(patients.map(p => {
       if (p.id === selectedPatientId) {
@@ -586,98 +653,114 @@ export function Patients() {
                 
                 {expandedVisits[visit.id] && (
                   <div className="p-4 bg-white border-t border-[#d0e3ec] text-sm">
-                     <div className="flex flex-col lg:flex-row gap-6 lg:gap-12 w-full justify-between">
+                     <div className="w-full">
                         {/* RX / Diagnosis */}
-                        <div className="flex-[2] space-y-3 order-2 lg:order-1">
+                        <div className="w-full space-y-3">
                            <div className="text-xs font-bold text-[#55697a] border-b border-[#d0e3ec] pb-1 text-end">
                              {isOld ? "RX" : t("diagnosis_label")}
                            </div>
                            {visit.rxData ? (
-                              <div className="w-full">
-                                {/* Mobile Version */}
-                                <div className="flex flex-col gap-3 sm:hidden mt-2">
+                              <div className="w-full mt-2">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   {visit.rxData.od && (
-                                    <div className="border border-[#d0e3ec] rounded-lg p-3 bg-[#f8fbff]">
-                                      <div className="font-bold text-blue-800 text-xs mb-2 border-b border-[#d0e3ec] pb-1">OD (R)</div>
-                                      <div className="grid grid-cols-3 gap-y-3 gap-x-2 text-sm text-center font-mono">
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">SPH</span>{visit.rxData.od.sphSign}{visit.rxData.od.sph || '0.00'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">CYL</span>{visit.rxData.od.cylSign}{visit.rxData.od.cyl || '0.00'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">AXIS</span>{visit.rxData.od.axis || '0'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">ADD</span>{visit.rxData.od.add || '0.00'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">VA</span>{visit.rxData.od.va || '-'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">BCVA</span>{visit.rxData.od.bcva || '-'}</div>
-                                      </div>
-                                    </div>
+                                     <div className="border border-[#d0e3ec] rounded-xl bg-white shadow-sm overflow-hidden">
+                                        <div className="bg-[#f0f7fa] text-blue-800 font-bold text-xs py-2 px-4 border-b border-[#d0e3ec] flex justify-between items-center">
+                                          <span>OD (R)</span>
+                                          <span className="text-[10px] text-[#55697a] uppercase tracking-widest">Right Eye</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-y-4 gap-x-2 p-4 text-sm text-center font-mono bg-white">
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">SPH</span>{visit.rxData.od.sphSign}{visit.rxData.od.sph || '0.00'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">CYL</span>{visit.rxData.od.cylSign}{visit.rxData.od.cyl || '0.00'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">AXIS</span>{visit.rxData.od.axis || '0'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">ADD</span>{visit.rxData.od.add ? `+${visit.rxData.od.add}` : '0.00'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">VA</span>{visit.rxData.od.va || '-'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">BCVA</span>{visit.rxData.od.bcva || '-'}</div>
+                                        </div>
+                                     </div>
                                   )}
                                   {visit.rxData.os && (
-                                    <div className="border border-[#d0e3ec] rounded-lg p-3 bg-[#f8fbff]">
-                                      <div className="font-bold text-blue-800 text-xs mb-2 border-b border-[#d0e3ec] pb-1">OS (L)</div>
-                                      <div className="grid grid-cols-3 gap-y-3 gap-x-2 text-sm text-center font-mono">
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">SPH</span>{visit.rxData.os.sphSign}{visit.rxData.os.sph || '0.00'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">CYL</span>{visit.rxData.os.cylSign}{visit.rxData.os.cyl || '0.00'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">AXIS</span>{visit.rxData.os.axis || '0'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">ADD</span>{visit.rxData.os.add || '0.00'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">VA</span>{visit.rxData.os.va || '-'}</div>
-                                         <div><span className="text-[#55697a] text-[10px] block font-bold font-sans">BCVA</span>{visit.rxData.os.bcva || '-'}</div>
-                                      </div>
-                                    </div>
+                                     <div className="border border-[#d0e3ec] rounded-xl bg-white shadow-sm overflow-hidden">
+                                        <div className="bg-[#f0f7fa] text-blue-800 font-bold text-xs py-2 px-4 border-b border-[#d0e3ec] flex justify-between items-center">
+                                          <span>OS (L)</span>
+                                          <span className="text-[10px] text-[#55697a] uppercase tracking-widest">Left Eye</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-y-4 gap-x-2 p-4 text-sm text-center font-mono bg-white">
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">SPH</span>{visit.rxData.os.sphSign}{visit.rxData.os.sph || '0.00'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">CYL</span>{visit.rxData.os.cylSign}{visit.rxData.os.cyl || '0.00'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">AXIS</span>{visit.rxData.os.axis || '0'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">ADD</span>{visit.rxData.os.add ? `+${visit.rxData.os.add}` : '0.00'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">VA</span>{visit.rxData.os.va || '-'}</div>
+                                           <div><span className="text-[#55697a] text-[10px] block font-bold font-sans mb-1 tracking-wider">BCVA</span>{visit.rxData.os.bcva || '-'}</div>
+                                        </div>
+                                     </div>
                                   )}
-                                  <div className="text-[#55697a] text-xs mt-1 border border-[#d0e3ec] rounded-lg p-2 bg-[#f8fbff]">
-                                    {visit.rxData.ipd && (
-                                      <div className="flex justify-between items-center bg-white p-1.5 rounded border border-[#e0eaef] mb-1.5"><span className="font-bold text-[10px] uppercase tracking-wider">IPD</span> <span className="font-medium text-ink">{visit.rxData.ipd}</span></div>
-                                    )}
-                                    <div className="flex justify-between items-center bg-white p-1.5 rounded border border-[#e0eaef] mb-1.5"><span className="font-bold text-[10px] uppercase tracking-wider">Lens</span> <span className="font-medium text-ink">{visit.rxData.lens || 'clear'}</span></div>
-                                    <div className="flex justify-between items-center bg-white p-1.5 rounded border border-[#e0eaef]"><span className="font-bold text-[10px] uppercase tracking-wider">Frame</span> <span className="font-medium text-ink">{visit.rxData.frame || '-'}</span></div>
-                                  </div>
                                 </div>
                                 
-                                {/* Desktop Version */}
-                                <div className="hidden sm:block overflow-x-auto w-full">
-                                  <table className="w-full text-center text-xs lg:text-sm border border-[#d0e3ec] rounded-lg overflow-hidden whitespace-nowrap">
-                                    <thead className="bg-[#f0f7fa] text-[#55697a]">
-                                      <tr>
-                                        <th className="p-2 lg:p-3 border border-[#d0e3ec]">EYE</th>
-                                        <th className="p-2 lg:p-3 border border-[#d0e3ec]">SPH</th>
-                                        <th className="p-2 lg:p-3 border border-[#d0e3ec]">CYL</th>
-                                        <th className="p-2 lg:p-3 border border-[#d0e3ec]">AXIS</th>
-                                        <th className="p-2 lg:p-3 border border-[#d0e3ec]">ADD</th>
-                                        <th className="p-2 lg:p-3 border border-[#d0e3ec]">VA</th>
-                                        <th className="p-2 lg:p-3 border border-[#d0e3ec]">BCVA</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="font-mono">
-                                      {visit.rxData.od && (
-                                        <tr>
-                                          <td className="p-2 lg:p-3 font-bold text-blue-800 border border-[#d0e3ec] font-sans">OD</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.od.sphSign}{visit.rxData.od.sph || '0.00'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.od.cylSign}{visit.rxData.od.cyl || '0.00'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.od.axis || '0'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.od.add || '0.00'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.od.va || '-'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.od.bcva || '-'}</td>
-                                        </tr>
-                                      )}
-                                      {visit.rxData.os && (
-                                        <tr>
-                                          <td className="p-2 lg:p-3 font-bold text-blue-800 border border-[#d0e3ec] font-sans">OS</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.os.sphSign}{visit.rxData.os.sph || '0.00'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.os.cylSign}{visit.rxData.os.cyl || '0.00'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.os.axis || '0'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.os.add || '0.00'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.os.va || '-'}</td>
-                                          <td className="p-2 lg:p-3 border border-[#d0e3ec]">{visit.rxData.os.bcva || '-'}</td>
-                                        </tr>
-                                      )}
-                                    </tbody>
-                                  </table>
-                                  <div className="text-[#55697a] text-xs lg:text-sm text-end mt-3 flex flex-col items-end gap-1">
-                                    {visit.rxData.ipd && (
-                                      <div className="flex items-center gap-2"><span className="font-bold text-[10px] uppercase tracking-widest text-[#55697a]">IPD:</span> <span className="font-medium text-ink bg-white px-2 py-0.5 rounded border border-[#e0eaef] min-w-[100px] text-center">{visit.rxData.ipd}</span></div>
-                                    )}
-                                    <div className="flex items-center gap-2"><span className="font-bold text-[10px] uppercase tracking-widest text-[#55697a]">Lens:</span> <span className="font-medium text-ink bg-white px-2 py-0.5 rounded border border-[#e0eaef] min-w-[100px] text-center">{visit.rxData.lens || 'clear'}</span></div>
-                                    <div className="flex items-center gap-2"><span className="font-bold text-[10px] uppercase tracking-widest text-[#55697a]">Frame:</span> <span className="font-medium text-ink bg-white px-2 py-0.5 rounded border border-[#e0eaef] min-w-[100px] text-center">{visit.rxData.frame || '-'}</span></div>
+                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {/* Lens Details */}
+                                  <div className="border border-[#d0e3ec] rounded-xl bg-white shadow-sm overflow-hidden flex flex-col">
+                                     <div className="bg-[#fcf8fa] text-burgundy font-bold text-xs py-2 px-4 border-b border-[#f3e1eb] flex justify-between items-center">
+                                       <span>{lang === 'ar' ? 'تفاصيل العدسة' : 'Lens Details'}</span>
+                                     </div>
+                                     <div className="p-4 text-sm text-ink flex flex-col gap-2 flex-grow">
+                                       <div className="flex justify-between">
+                                         <span className="text-[#55697a] uppercase tracking-widest text-[10px] font-bold">Type</span>
+                                         <span className="font-medium text-right">{visit.rawFormData?.lensType || visit.rxData?.lens || '-'}</span>
+                                       </div>
+                                       {visit.rawFormData?.material && (
+                                         <div className="flex justify-between">
+                                           <span className="text-[#55697a] uppercase tracking-widest text-[10px] font-bold">Material</span>
+                                           <span className="font-medium text-right">{visit.rawFormData.material}</span>
+                                         </div>
+                                       )}
+                                       {visit.rawFormData?.coatings && visit.rawFormData.coatings.length > 0 && (
+                                         <div className="flex justify-between">
+                                           <span className="text-[#55697a] uppercase tracking-widest text-[10px] font-bold">Coatings</span>
+                                           <span className="font-medium text-right">{visit.rawFormData.coatings.join(', ')}</span>
+                                         </div>
+                                       )}
+                                       {visit.rxData?.ipd && (
+                                         <div className="flex justify-between border-t border-[#f3e1eb] pt-2 mt-auto">
+                                           <span className="text-[#55697a] uppercase tracking-widest text-[10px] font-bold">IPD</span>
+                                           <span className="font-bold text-right">{visit.rxData.ipd}</span>
+                                         </div>
+                                       )}
+                                     </div>
+                                  </div>
+
+                                  {/* Frame Details */}
+                                  <div className="border border-[#d0e3ec] rounded-xl bg-white shadow-sm overflow-hidden flex flex-col">
+                                     <div className="bg-[#f0f7fa] text-blue-800 font-bold text-xs py-2 px-4 border-b border-[#d0e3ec] flex justify-between items-center">
+                                       <span>{lang === 'ar' ? 'تفاصيل الإطار' : 'Frame Details'}</span>
+                                     </div>
+                                     <div className="p-4 text-sm text-ink flex flex-col gap-2 flex-grow">
+                                       <div className="flex justify-between">
+                                         <span className="text-[#55697a] uppercase tracking-widest text-[10px] font-bold">Brand</span>
+                                         <span className="font-medium text-right">{visit.rawFormData?.frameBrand || visit.rxData?.frame || 'None'}</span>
+                                       </div>
+                                       {visit.rawFormData?.frameType && (
+                                         <div className="flex justify-between">
+                                           <span className="text-[#55697a] uppercase tracking-widest text-[10px] font-bold">Type</span>
+                                           <span className="font-medium text-right">{visit.rawFormData.frameType}</span>
+                                         </div>
+                                       )}
+                                       {visit.rawFormData?.frameMaterial && (
+                                         <div className="flex justify-between">
+                                           <span className="text-[#55697a] uppercase tracking-widest text-[10px] font-bold">Material</span>
+                                           <span className="font-medium text-right">{visit.rawFormData.frameMaterial}</span>
+                                         </div>
+                                       )}
+                                     </div>
                                   </div>
                                 </div>
+                                <div className="clear-both"></div>
+                                {/* Auto-Diagnosis display directly after RX table */}
+                                {visit.diagnosis && (
+                                  <div className="mt-4 p-4 bg-[#fcf8fa] border border-[#f3e1eb] rounded-xl shadow-sm">
+                                    <h4 className="flex items-center gap-2 text-[10px] font-bold text-burgundy uppercase tracking-widest mb-2"><ClipboardList size={14} />{t("diagnosis_label")}</h4>
+                                    <p className="text-sm text-ink-mid leading-relaxed whitespace-pre-wrap">{visit.diagnosis}</p>
+                                  </div>
+                                )}
                               </div>
                            ) : (
                               <p className="text-sm text-ink-mid leading-relaxed whitespace-pre-wrap mt-2">{visit.diagnosis || t("no_data")}</p>
@@ -690,41 +773,29 @@ export function Patients() {
                              </div>
                            )}
                         </div>
-
-                        {/* Financials */}
-                        {!isOld && (
-                          <div className="flex-[1] space-y-3 order-1 lg:order-2 self-start lg:min-w-[200px]">
-                             <div className="text-xs font-bold text-[#55697a] border-b border-[#d0e3ec] pb-1 text-end">
-                               {lang === 'ar' ? 'المالية' : 'Financial'}
-                             </div>
-                             <div className="flex justify-between items-center border-b border-[#d0e3ec] pb-1">
-                               <span className="text-[#55697a] font-bold">{lang === 'ar' ? 'الإجمالي' : 'Total'}</span>
-                               <span className="font-mono text-[#55697a]">{formatIQD(visit.total_amount)}</span>
-                             </div>
-                             <div className="flex justify-between items-center border-b border-[#d0e3ec] pb-1">
-                               <span className="text-[#55697a] font-bold">{lang === 'ar' ? 'المدفوع' : 'Paid'}</span>
-                               <span className="font-mono text-[#55697a]">{formatIQD(visit.amount_paid)}</span>
-                             </div>
-                             <div className="flex justify-between items-center border-b border-[#d0e3ec] pb-1">
-                               <span className="text-green-600 font-bold">{lang === 'ar' ? 'المتبقي' : 'Remaining'}</span>
-                               <span className="font-mono text-green-600">{formatIQD(visit.remaining)}</span>
-                             </div>
-                          </div>
-                        )}
                      </div>
                      
                      <div className="mt-4 pt-4 border-t border-[#d0e3ec] flex justify-end gap-2 text-sm">
                        <button 
                          onClick={(e) => { e.stopPropagation(); handleDeleteVisit(visit.id); }}
-                         className="px-4 py-2 text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                         className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+                         title={lang === 'ar' ? 'حذف' : 'Delete'}
                        >
-                         {lang === 'ar' ? 'حذف' : 'Delete'}
+                         <Trash2 size={16} />
                        </button>
-                       <button onClick={(e) => { e.stopPropagation(); handleEditVisit(visit); }} className="px-4 py-2 text-[#55697a] border border-[#d0e3ec] rounded-lg hover:bg-black/5 flex items-center gap-2 transition-colors">
-                         <span className="hidden sm:inline">{lang === 'ar' ? 'تعديل' : 'Edit'}</span>
+                       <button 
+                         onClick={(e) => { e.stopPropagation(); handleEditVisit(visit); }} 
+                         className="p-2 text-ink-light hover:text-burgundy hover:bg-cream rounded-lg transition-colors border border-transparent hover:border-cream-border"
+                         title={lang === 'ar' ? 'تعديل' : 'Edit'}
+                       >
+                         <Pencil size={16} />
                        </button>
-                       <button onClick={(e) => { e.stopPropagation(); handlePrintVisit(visit); }} className="px-4 py-2 text-[#55697a] border border-[#d0e3ec] rounded-lg hover:bg-black/5 flex items-center gap-2 transition-colors">
-                         {lang === 'ar' ? 'طباعة A5' : 'Print A5'}
+                       <button 
+                         onClick={(e) => { e.stopPropagation(); handlePrintVisit(visit); }} 
+                         className="p-2 text-ink-light hover:text-burgundy hover:bg-cream rounded-lg transition-colors border border-transparent hover:border-cream-border"
+                         title={lang === 'ar' ? 'طباعة A5' : 'Print A5'}
+                       >
+                         <Printer size={16} />
                        </button>
                      </div>
                   </div>
@@ -804,7 +875,7 @@ export function Patients() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[50.4rem] overflow-hidden flex flex-col"
             dir={lang === "ar" ? "rtl" : "ltr"}
           >
             {/* Header */}
@@ -1098,7 +1169,7 @@ export function Patients() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[21.6rem] overflow-hidden"
           >
             <div className="bg-emerald-600 p-6 text-white">
               <h2 className="text-xl font-serif font-bold">
@@ -1157,7 +1228,7 @@ export function Patients() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[28.8rem] overflow-hidden"
           >
             <div className="bg-burgundy p-6 text-white">
               <h2 className="text-xl font-serif font-bold">
@@ -1238,8 +1309,151 @@ export function Patients() {
         </div>
       )}
 
+      {/* Delete Patient Confirmation Modal (Detail View) */}
+      {deletePatientConfirm && (
+        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+          >
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={32} className="text-rose-600" />
+              </div>
+              <h3 className="text-xl font-bold text-ink mb-2">
+                {lang === 'ar' ? 'حذف مريض' : 'Delete Patient'}
+              </h3>
+              <p className="text-sm text-ink-light mb-6">
+                {lang === 'ar' 
+                  ? 'هل أنت متأكد من أنك تريد حذف هذا السجل بشكل دائم؟' 
+                  : 'Are you sure you want to permanently delete this record?'}
+              </p>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeletePatientConfirm(null);
+                  }}
+                  className="flex-1 py-3 bg-cream hover:bg-cream-dark text-ink-mid font-bold rounded-xl transition-all"
+                >
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    confirmDeletePatient();
+                  }}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-rose-600/20"
+                >
+                  {lang === 'ar' ? 'حذف' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delete Visit Confirmation Modal (Detail View) */}
+      {deleteVisitConfirmId && (
+        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+          >
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={32} className="text-rose-600" />
+              </div>
+              <h3 className="text-xl font-bold text-ink mb-2">
+                {lang === 'ar' ? 'حذف الزيارة' : 'Delete Visit'}
+              </h3>
+              <p className="text-sm text-ink-light mb-6">
+                {lang === 'ar' 
+                  ? 'هل أنت متأكد من أنك تريد حذف هذا السجل بشكل دائم؟' 
+                  : 'Are you sure you want to permanently delete this visit?'}
+              </p>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteVisitConfirmId(null);
+                  }}
+                  className="flex-1 py-3 bg-cream hover:bg-cream-dark text-ink-mid font-bold rounded-xl transition-all"
+                >
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    confirmDeleteVisit();
+                  }}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-rose-600/20"
+                >
+                  {lang === 'ar' ? 'حذف' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteVisitConfirmId(null);
+              }}
+              className="absolute top-4 end-4 text-ink-light hover:text-ink transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+          </motion.div>
+        </div>
+      )}
+
       </div>
       </>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-8 bg-zinc-200/50 rounded-lg w-48" />
+            <div className="h-4 bg-zinc-200/50 rounded-lg w-32" />
+          </div>
+          <div className="h-10 bg-zinc-200/50 rounded-lg w-full sm:w-40" />
+        </div>
+
+        {/* Filters Skeleton */}
+        <div className="card p-4 flex flex-col md:flex-row gap-4">
+          <div className="flex-1 h-10 bg-zinc-200/50 rounded-xl" />
+          <div className="h-10 w-full md:w-32 bg-zinc-200/50 rounded-xl" />
+          <div className="h-10 w-full md:w-32 bg-zinc-200/50 rounded-xl" />
+        </div>
+
+        {/* List Skeleton */}
+        <div className="flex flex-col border border-zinc-200/50 rounded-xl bg-white divide-y divide-zinc-200/50">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="p-4 grid grid-cols-12 gap-4 items-center">
+              <div className="col-span-12 lg:col-span-3 flex items-center gap-3">
+                <div className="w-10 h-10 bg-zinc-200/50 rounded-xl shrink-0" />
+                <div className="space-y-2 w-full">
+                  <div className="h-4 bg-zinc-200/50 rounded w-24" />
+                  <div className="h-3 bg-zinc-200/50 rounded w-16" />
+                </div>
+              </div>
+              <div className="hidden lg:block lg:col-span-2 h-4 bg-zinc-200/50 rounded w-20" />
+              <div className="hidden lg:block lg:col-span-1 h-4 bg-zinc-200/50 rounded w-10 justify-self-center" />
+              <div className="hidden lg:block lg:col-span-1 h-4 bg-zinc-200/50 rounded w-12 justify-self-center" />
+              <div className="hidden lg:block lg:col-span-2 h-4 bg-zinc-200/50 rounded w-28 justify-self-center" />
+              <div className="hidden lg:block lg:col-span-3 h-4 bg-zinc-200/50 rounded w-24 justify-self-end text-end pr-8" />
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
@@ -1274,7 +1488,7 @@ export function Patients() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[21.6rem] overflow-hidden"
           >
             <div className="bg-emerald-600 p-6 text-white">
               <h2 className="text-xl font-serif font-bold">
@@ -1333,7 +1547,7 @@ export function Patients() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[28.8rem] overflow-hidden"
           >
             <div className="bg-burgundy p-6 text-white">
               <h2 className="text-xl font-serif font-bold">
@@ -1416,18 +1630,53 @@ export function Patients() {
 
       {/* Filters Bar */}
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col md:flex-row gap-3">
-          <div className="flex-1 relative group">
-            <Search className="absolute start-4 top-1/2 -translate-y-1/2 text-ink-light group-focus-within:text-burgundy transition-colors" size={18} />
-            <input 
-              type="text" 
-              placeholder={t("search_placeholder")}
-              className="w-full ps-12 pe-4 py-3 bg-white border-2 border-cream-border rounded-xl focus:border-burgundy focus:shadow-lg focus:shadow-burgundy/5 transition-all outline-none text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
+          <div className="flex items-center gap-3 w-full md:w-auto flex-1">
+            <div 
+              className={cn(
+                "relative group transition-all duration-300 ease-in-out h-full flex items-center",
+                isSearchExpanded || searchTerm ? "w-full md:w-80" : "w-[46px]"
+              )}
+              onMouseEnter={() => setIsSearchExpanded(true)}
+              onMouseLeave={() => {
+                if (!searchTerm && document.activeElement?.id !== 'patients-search') {
+                  setIsSearchExpanded(false);
+                }
+              }}
+            >
+              <div className={cn(
+                "absolute inset-0 bg-white border-2 rounded-xl transition-all duration-300",
+                isSearchExpanded || searchTerm ? "border-burgundy shadow-lg shadow-burgundy/5" : "border-cream-border hover:border-burgundy/50 cursor-pointer"
+              )} onClick={() => { setIsSearchExpanded(true); setTimeout(() => document.getElementById('patients-search')?.focus(), 50); }} />
+              <Search 
+                className={cn(
+                  "absolute start-3.5 top-1/2 -translate-y-1/2 transition-colors z-10 pointer-events-none",
+                  isSearchExpanded || searchTerm ? "text-burgundy" : "text-ink-light group-hover:text-burgundy"
+                )} 
+                size={18} 
+              />
+              <input 
+                id="patients-search"
+                type="text" 
+                placeholder={isSearchExpanded || searchTerm ? t("search_placeholder") : ""}
+                className={cn(
+                  "w-full h-full min-h-[46px] ps-10 pe-4 bg-transparent transition-all outline-none text-sm relative z-10",
+                  isSearchExpanded || searchTerm ? "opacity-100" : "opacity-0 cursor-pointer w-[46px]"
+                )}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onFocus={() => setIsSearchExpanded(true)}
+                onBlur={() => {
+                  if (!searchTerm) setIsSearchExpanded(false);
+                }}
+              />
+            </div>
+            
+            {/* Invisible spacer to keep filters on the right pushed when search is collapsed */}
+            <div className={cn("hidden md:block flex-1 transition-all", isSearchExpanded || searchTerm ? "w-0" : "w-auto")} />
           </div>
-          <div className="flex flex-wrap gap-2">
+
+          <div className="flex flex-wrap gap-2 md:w-auto w-full">
             <div className="flex bg-white border-2 border-cream-border rounded-xl overflow-hidden focus-within:border-burgundy transition-all">
               <select 
                 value={patientSortField}
@@ -1460,7 +1709,7 @@ export function Patients() {
           <div className="col-span-2" />
         </div>
 
-        <div className="space-y-3 lg:space-y-0 lg:border lg:border-cream-border lg:rounded-b-2xl lg:bg-white/50 lg:divide-y lg:divide-cream-border">
+        <div className="flex flex-col lg:border lg:border-cream-border lg:rounded-b-2xl lg:bg-white/50 divide-y divide-cream-border border border-cream-border rounded-xl lg:rounded-t-none lg:border-t-0 bg-white">
           {filteredPatients.length > 0 ? filteredPatients.map((patient, idx) => (
             <motion.div
               layout
@@ -1469,7 +1718,7 @@ export function Patients() {
               transition={{ delay: idx * 0.05 }}
               key={patient.id}
               onClick={() => setSelectedPatientId(patient.id)}
-              className="lg:grid lg:grid-cols-12 lg:gap-3 px-3 lg:px-4 py-3 lg:py-2 bg-white border border-cream-border lg:border-none rounded-xl lg:rounded-none items-center hover:bg-cream/50 transition-all group cursor-pointer relative shadow-sm lg:shadow-none pe-24 lg:pe-4"
+              className="lg:grid lg:grid-cols-12 lg:gap-3 px-3 lg:px-4 py-4 lg:py-3 bg-transparent items-center hover:bg-cream/50 transition-all group cursor-pointer relative pe-24 lg:pe-4"
             >
 
               {/* Name & Avatar */}
@@ -1482,7 +1731,7 @@ export function Patients() {
                 </div>
                 <div className="min-w-0 overflow-hidden">
                   <h4 className="text-sm font-bold text-ink truncate group-hover:text-burgundy transition-colors leading-tight">{patient.full_name}</h4>
-                  <p className="text-[9px] font-bold text-ink-light lg:hidden flex items-center gap-1 uppercase tracking-tight mt-0.5">
+                  <p className="text-[10px] font-bold text-ink-light lg:hidden flex items-center gap-1 uppercase tracking-tight mt-[5px]">
                     <Clock size={8} className="shrink-0" /> {t("last_visit")}: {patient.last_visit} • {patient.visits?.length || 0}
                   </p>
                 </div>
@@ -1494,7 +1743,7 @@ export function Patients() {
                   <Phone size={10} className="text-burgundy" />
                 </div>
                 <Phone size={10} className="hidden lg:block text-ink-light shrink-0" />
-                <span className="font-mono text-xs pt-0.5">{patient.phone}</span>
+                <span className="font-mono text-[13.5px] pt-0.5">{patient.phone}</span>
               </div>
 
 
@@ -1509,14 +1758,14 @@ export function Patients() {
               </div>
 
               {/* Last Visit */}
-              <div className="col-span-1 text-center hidden lg:block text-[9px] font-semibold text-ink-light uppercase tracking-tight">
+              <div className="col-span-1 text-center hidden lg:block text-[11px] font-semibold text-ink-light uppercase tracking-tight">
                 {patient.last_visit}
               </div>
 
               {/* Outstanding Debt */}
               <div className="col-span-2 text-start lg:text-end mb-2 lg:mb-0">
                 <div className={cn(
-                  "inline-flex items-center px-2.5 py-1 rounded-md text-xs sm:text-sm font-bold ring-1 ring-inset transition-all",
+                  "inline-flex items-center px-2.5 py-1 rounded-md text-[12px] font-bold ring-1 ring-inset transition-all",
                   patient.outstanding > 0 
                   ? "bg-rose-50 text-rose-600 ring-rose-600/20" 
                   : "bg-emerald-50 text-emerald-600 ring-emerald-600/20"
@@ -1540,23 +1789,23 @@ export function Patients() {
                         className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors"
                         title={lang === "ar" ? "تسديد" : "Top Up"}
                      >
-                       <Banknote size={18} />
+                       <Banknote size={16} />
                      </button>
                    )}
                    <button 
                     onClick={(e) => openEditModal(e, patient)}
                     className="p-1.5 text-ink-light hover:text-burgundy hover:bg-burgundy-pale rounded-md transition-colors"
                    >
-                    <Pencil size={18} />
+                    <Pencil size={16} />
                    </button>
                    <button 
                     onClick={(e) => handleDeletePatient(e, patient)}
                     className="p-1.5 text-rose-300 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                   >
-                    <Trash2 size={18} />
+                    <Trash2 size={16} />
                    </button>
                    <button className="hidden lg:flex p-1.5 text-ink-light hover:text-burgundy hover:bg-burgundy-pale rounded-md transition-all">
-                    <ChevronRight size={18} className={cn("transition-transform", lang === "ar" ? "rotate-180 group-hover:-translate-x-1" : "group-hover:translate-x-1")} />
+                    <ChevronRight size={16} className={cn("transition-transform", lang === "ar" ? "rotate-180 group-hover:-translate-x-1" : "group-hover:translate-x-1")} />
                   </button>
                 </div>
               </div>
@@ -1574,6 +1823,116 @@ export function Patients() {
           )}
         </div>
       </div>
+
+      {/* Delete Patient Confirmation Modal */}
+      {deletePatientConfirm && (
+        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+          >
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={32} className="text-rose-600" />
+              </div>
+              <h3 className="text-xl font-bold text-ink mb-2">
+                {lang === 'ar' ? 'حذف مريض' : 'Delete Patient'}
+              </h3>
+              <p className="text-sm text-ink-light mb-6">
+                {lang === 'ar' 
+                  ? 'هل أنت متأكد من أنك تريد حذف هذا السجل بشكل دائم؟' 
+                  : 'Are you sure you want to permanently delete this record?'}
+              </p>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeletePatientConfirm(null);
+                  }}
+                  className="flex-1 py-3 bg-cream hover:bg-cream-dark text-ink-mid font-bold rounded-xl transition-all"
+                >
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    confirmDeletePatient();
+                  }}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-rose-600/20"
+                >
+                  {lang === 'ar' ? 'حذف' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeletePatientConfirm(null);
+              }}
+              className="absolute top-4 end-4 text-ink-light hover:text-ink transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delete Visit Confirmation Modal */}
+      {deleteVisitConfirmId && (
+        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+          >
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={32} className="text-rose-600" />
+              </div>
+              <h3 className="text-xl font-bold text-ink mb-2">
+                {lang === 'ar' ? 'حذف الزيارة' : 'Delete Visit'}
+              </h3>
+              <p className="text-sm text-ink-light mb-6">
+                {lang === 'ar' 
+                  ? 'هل أنت متأكد من أنك تريد حذف هذا السجل بشكل دائم؟' 
+                  : 'Are you sure you want to permanently delete this visit?'}
+              </p>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteVisitConfirmId(null);
+                  }}
+                  className="flex-1 py-3 bg-cream hover:bg-cream-dark text-ink-mid font-bold rounded-xl transition-all"
+                >
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    confirmDeleteVisit();
+                  }}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-rose-600/20"
+                >
+                  {lang === 'ar' ? 'حذف' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteVisitConfirmId(null);
+              }}
+              className="absolute top-4 end-4 text-ink-light hover:text-ink transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { Patients } from "./components/Patients";
 import { Inventory } from "./components/Inventory";
 import { Followups } from "./components/Followups";
 import { Lenses } from "./components/Lenses";
+import { Frames } from "./components/Frames";
 import { AuditLog } from "./components/AuditLog";
 import { Settings } from "./components/Settings";
 import { Auth } from "./components/Auth";
@@ -40,6 +41,8 @@ function AppContent() {
         return <Followups />;
       case "lenses":
         return <Lenses />;
+      case "frames":
+        return <Frames />;
       case "inventory":
         return <Inventory />;
       case "audit":

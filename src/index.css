@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&family=Trispace:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -49,6 +49,21 @@
   .input-field {
     @apply bg-white border-2 border-cream-border rounded-lg px-3 py-2 text-ink focus:border-burgundy focus:ring-2 focus:ring-burgundy/10 transition-all outline-none;
   }
+  
+  /* Remove arrows from number inputs */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+.recharts-tooltip-item-name {
+  font-weight: bold;
+  color: #5a5a5a;
 }
 
 @media print {
@@ -73,4 +88,38 @@
     margin: 0;
     padding: 0;
   }
+}
+
+div#root\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > main\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > h1\:nth-of-type\(1\) {
+  font-family: 'Trispace', sans-serif;
+  font-weight: bold;
+  font-size: 30px;
+  margin-right: 0px;
+  margin-bottom: 4px;
+  padding-left: 0px;
+  margin-left: 17px;
+  margin-top: -4px;
+}
+
+div#root\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > main\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > button\:nth-of-type\(1\) > svg\:nth-of-type\(1\) {
+
+}
+
+div#root\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > main\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > button\:nth-of-type\(1\) {
+  margin-top: -14px;
+  width: 39.6307px;
+  height: 39.6307px;
+  margin-left: 0px;
+}
+
+div#root\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > main\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) {
+
+}
+
+div#root\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) {
+
+}
+
+div#root\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > main\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > div\:nth-of-type\(1\) > span\:nth-of-type\(1\) {
+
 }

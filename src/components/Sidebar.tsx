@@ -33,18 +33,32 @@ export function Sidebar({
 }) {
   const { lang, setLang, user, setUser, currentSection, setCurrentSection, t, followupCount } = useClinic();
 
-  const menuItems: { id: Section; label: string; icon: any; role?: string; count?: number }[] = [
-    { id: "dashboard", label: t("dashboard"), icon: LayoutDashboard },
-    { id: "patients", label: t("patients"), icon: Users },
-    { id: "followups", label: t("followups"), icon: CalendarClock, count: followupCount },
-    { id: "inventory", label: t("inventory"), icon: Boxes },
-    { id: "lenses", label: t("lenses"), icon: Disc },
-    { id: "frames", label: t("frames"), icon: Glasses },
-    { id: "reports", label: t("reports"), icon: FileBarChart },
-    { id: "settings", label: t("settings"), icon: Settings },
-    { id: "audit", label: t("audit"), icon: ShieldCheck },
-    { id: "superadmin", label: "Admin", icon: Lock, role: "super_admin" },
-  ];
+  const menuGroups = [
+    {
+      groupLabel: t("main_nav") as string,
+      items: [
+        { id: "dashboard", label: t("dashboard"), icon: LayoutDashboard },
+        { id: "patients", label: t("patients"), icon: Users },
+        { id: "followups", label: t("followups"), icon: CalendarClock, count: followupCount },
+      ]
+    },
+    {
+      groupLabel: t("inventory_nav") as string,
+      items: [
+        { id: "lenses", label: t("lenses"), icon: Disc },
+        { id: "frames", label: t("frames"), icon: Glasses },
+      ]
+    },
+    {
+      groupLabel: t("reports_settings_nav") as string,
+      items: [
+        { id: "reports", label: t("reports"), icon: FileBarChart },
+        { id: "settings", label: t("settings"), icon: Settings },
+        { id: "audit", label: t("audit"), icon: ShieldCheck },
+        { id: "superadmin", label: "Admin", icon: Lock, role: "super_admin" },
+      ]
+    }
+  ] as const;
 
   const handleLogout = () => {
     setUser(null);
@@ -79,47 +93,56 @@ export function Sidebar({
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-4 overflow-y-auto space-y-1">
-        {menuItems.map((item) => {
-          if (item.role && user?.role !== item.role) return null;
-          const isActive = currentSection === item.id;
-          const Icon = item.icon;
+      <nav className="flex-1 py-4 overflow-y-auto space-y-6">
+        {menuGroups.map((group, groupIdx) => (
+          <div key={groupIdx} className="space-y-1">
+            {(!collapsed || mobileOpen) && group.groupLabel && (
+              <div className="px-4 mb-2 text-[10px] font-bold text-white/40 uppercase tracking-widest">
+                {group.groupLabel}
+              </div>
+            )}
+            {group.items.map((item) => {
+              if ("role" in item && item.role && user?.role !== item.role) return null;
+              const isActive = currentSection === item.id;
+              const Icon = item.icon;
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => handleNavClick(item.id)}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 transition-all relative group",
-                isActive ? "text-white bg-white/10" : "text-white/60 hover:text-white hover:bg-white/5"
-              )}
-            >
-              {isActive && (
-                <motion.div 
-                  layoutId="active-pill"
-                  className="absolute start-0 inset-y-0 w-1 bg-gold rounded-e" 
-                />
-              )}
-              <Icon className={cn("w-5 h-5 shrink-0", isActive ? "text-gold" : "")} />
-              {(!collapsed || mobileOpen) && (
-                <span className="text-sm font-medium flex-1 text-start">{item.label}</span>
-              )}
-              {!!item.count && item.count > 0 && (!collapsed || mobileOpen) && (
-                <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-5 text-center">
-                  {item.count}
-                </span>
-              )}
-              {!!item.count && item.count > 0 && collapsed && !mobileOpen && (
-                <span className="absolute top-2 start-6 w-2 h-2 bg-rose-500 rounded-full" />
-              )}
-              {collapsed && !mobileOpen && (
-                <div className="absolute start-16 bg-ink text-white text-[10px] px-2 py-1 rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
-                  {item.label}
-                </div>
-              )}
-            </button>
-          );
-        })}
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id as Section)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-4 py-3 transition-all relative group",
+                    isActive ? "text-white bg-white/10" : "text-white/60 hover:text-white hover:bg-white/5"
+                  )}
+                >
+                  {isActive && (
+                    <motion.div 
+                      layoutId="active-pill"
+                      className="absolute start-0 inset-y-0 w-1 bg-gold rounded-e" 
+                    />
+                  )}
+                  <Icon className={cn("w-5 h-5 shrink-0", isActive ? "text-gold" : "")} />
+                  {(!collapsed || mobileOpen) && (
+                    <span className="text-sm font-medium flex-1 text-start">{item.label}</span>
+                  )}
+                  {"count" in item && item.count !== undefined && item.count > 0 && (!collapsed || mobileOpen) && (
+                    <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-5 text-center">
+                      {item.count}
+                    </span>
+                  )}
+                  {"count" in item && item.count !== undefined && item.count > 0 && collapsed && !mobileOpen && (
+                    <span className="absolute top-2 start-6 w-2 h-2 bg-rose-500 rounded-full" />
+                  )}
+                  {collapsed && !mobileOpen && (
+                    <div className="absolute start-16 bg-ink text-white text-[10px] px-2 py-1 rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                      {item.label}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Footer */}

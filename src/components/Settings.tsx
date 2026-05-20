@@ -4,7 +4,7 @@ import { useClinic } from "../context/ClinicContext";
 import { cn } from "../lib/utils";
 
 export function Settings() {
-  const { lang, clinic, setClinic, logAction } = useClinic();
+  const { lang, clinic, setClinic, logAction, lensCatalog, setLensCatalog } = useClinic();
   const [activeTab, setActiveTab] = useState("general");
   
   const [formData, setFormData] = useState({
@@ -16,6 +16,51 @@ export function Settings() {
     wa_template_3: clinic?.wa_template_3 || "",
     default_followup_months: clinic?.default_followup_months ?? 3
   });
+
+  const serializeCatalog = (items: import("../types").CatalogItem[]) => items.map(i => `${i.label} | ${i.value}`).join('\n');
+  const [catalogText, setCatalogText] = useState({
+    type: serializeCatalog(lensCatalog?.type || []),
+    material: serializeCatalog(lensCatalog?.material || []),
+    coating: serializeCatalog(lensCatalog?.coating || []),
+    frame_brand: serializeCatalog(lensCatalog?.frame_brand || []),
+    frame_type: serializeCatalog(lensCatalog?.frame_type || []),
+    frame_material: serializeCatalog(lensCatalog?.frame_material || []),
+    frame_shape: serializeCatalog(lensCatalog?.frame_shape || [])
+  });
+
+  const parseCatalog = (text: string): import("../types").CatalogItem[] => {
+    return text.split('\n').filter(line => line.trim() !== "").map(line => {
+      const parts = line.split('|').map(s => s.trim());
+      if (parts.length === 2) {
+        return { label: parts[0], value: parts[1], is_active: true };
+      }
+      return { label: line.trim(), value: line.trim(), is_active: true };
+    });
+  };
+
+  const [saveStatus, setSaveStatus] = useState("");
+
+  const saveCatalog = () => {
+    setLensCatalog(prev => ({
+      ...prev,
+      type: parseCatalog(catalogText.type),
+      material: parseCatalog(catalogText.material),
+      coating: parseCatalog(catalogText.coating),
+      frame_brand: parseCatalog(catalogText.frame_brand),
+      frame_type: parseCatalog(catalogText.frame_type),
+      frame_material: parseCatalog(catalogText.frame_material),
+      frame_shape: parseCatalog(catalogText.frame_shape)
+    }));
+    logAction({
+      action: "update",
+      entity_type: "settings",
+      entity_id: "catalog",
+      entity_name: "Product Catalog",
+      details: "Updated product catalog items"
+    });
+    setSaveStatus(lang === 'ar' ? 'تم حفظ الكتالوج بنجاح!' : 'Catalog saved successfully!');
+    setTimeout(() => setSaveStatus(""), 3000);
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +87,8 @@ export function Settings() {
         ...formData
       });
       
-      alert(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Settings saved successfully');
+      setSaveStatus(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Settings saved successfully');
+      setTimeout(() => setSaveStatus(""), 3000);
     }
   };
 
@@ -69,10 +115,10 @@ export function Settings() {
         </div>
       </div>
       
-      <div className="flex flex-col md:flex-row gap-6">
+      <div className="flex flex-col gap-6">
         {/* Settings Navigation */}
-        <div className="w-full md:w-64 flex-shrink-0">
-          <div className="bg-white rounded-2xl border border-cream-border p-2 shadow-sm flex md:flex-col gap-1 overflow-x-auto">
+        <div className="w-full">
+          <div className="bg-white rounded-2xl border border-cream-border p-2 shadow-sm flex flex-nowrap overflow-x-auto hide-scrollbar gap-2">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -80,9 +126,9 @@ export function Settings() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all whitespace-nowrap text-sm font-bold text-start",
+                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all whitespace-nowrap text-sm font-bold",
                     activeTab === tab.id
-                      ? "bg-burgundy/5 text-burgundy"
+                      ? "bg-burgundy text-white shadow-md shadow-burgundy/20"
                       : "text-ink-mid hover:bg-cream hover:text-ink"
                   )}
                 >
@@ -147,14 +193,15 @@ export function Settings() {
                     onChange={e => setFormData({ ...formData, default_followup_months: parseInt(e.target.value) || 3 })}
                   />
                 </div>
-                <div className="flex justify-start pt-4 border-t border-cream-border mt-6">
+                <div className="flex flex-col items-start gap-3 pt-6 border-t border-cream-border mt-6">
                   <button
                     type="submit"
-                    className="btn-primary"
+                    className="btn-burgundy w-full flex items-center justify-center p-4 text-sm shadow-md"
                   >
-                    <Save size={18} />
-                    {lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes'}
+                    <Save size={20} className="mr-2" />
+                    {lang === 'ar' ? 'حفظ التغييرات' : 'Save General Changes'}
                   </button>
+                  {saveStatus && <span className="text-sm font-bold text-emerald-600 animate-in fade-in slide-in-from-bottom-2">{saveStatus}</span>}
                 </div>
               </form>
             )}
@@ -173,21 +220,73 @@ export function Settings() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-ink-mid uppercase tracking-widest mb-1.5">Lens Types</label>
-                    <textarea className="input-field min-h-[100px] font-mono text-xs" defaultValue="Single Vision | single_vision&#10;Bifocal | bifocal&#10;Progressive | progressive" />
+                    <textarea 
+                      className="input-field min-h-[100px] font-mono text-xs" 
+                      value={catalogText.type} 
+                      onChange={e => setCatalogText(prev => ({ ...prev, type: e.target.value }))} 
+                      placeholder="Single Vision | single_vision&#10;Bifocal | bifocal"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-ink-mid uppercase tracking-widest mb-1.5">Lens Materials</label>
-                    <textarea className="input-field min-h-[100px] font-mono text-xs" defaultValue="CR-39 | cr39&#10;Polycarbonate | polycarbonate&#10;High Index 1.6 | high_index_16" />
+                    <textarea 
+                      className="input-field min-h-[100px] font-mono text-xs" 
+                      value={catalogText.material} 
+                      onChange={e => setCatalogText(prev => ({ ...prev, material: e.target.value }))} 
+                      placeholder="CR-39 | cr39&#10;Polycarbonate | polycarbonate"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-ink-mid uppercase tracking-widest mb-1.5">Coatings</label>
-                    <textarea className="input-field min-h-[100px] font-mono text-xs" defaultValue="Uncoated | uncoated&#10;Anti-Reflective | ar&#10;Blue Control | blue_control" />
+                    <textarea 
+                      className="input-field min-h-[100px] font-mono text-xs" 
+                      value={catalogText.coating} 
+                      onChange={e => setCatalogText(prev => ({ ...prev, coating: e.target.value }))} 
+                      placeholder="Uncoated | uncoated&#10;Anti-Reflective | ar"
+                    />
                   </div>
-                  <div className="flex justify-start pt-4 border-t border-cream-border mt-6">
-                    <button className="btn-primary" onClick={() => alert('Catalog saved!')}>
-                      <Save size={18} />
-                      {lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes'}
+                  <div>
+                    <label className="block text-xs font-bold text-ink-mid uppercase tracking-widest mb-1.5">Frame Brands</label>
+                    <textarea 
+                      className="input-field min-h-[100px] font-mono text-xs" 
+                      value={catalogText.frame_brand} 
+                      onChange={e => setCatalogText(prev => ({ ...prev, frame_brand: e.target.value }))} 
+                      placeholder="Ray-Ban | rayban&#10;Oakley | oakley"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-ink-mid uppercase tracking-widest mb-1.5">Frame Types</label>
+                    <textarea 
+                      className="input-field min-h-[100px] font-mono text-xs" 
+                      value={catalogText.frame_type} 
+                      onChange={e => setCatalogText(prev => ({ ...prev, frame_type: e.target.value }))} 
+                      placeholder="Full Rim | full_rim&#10;Rimless | rimless"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-ink-mid uppercase tracking-widest mb-1.5">Frame Materials</label>
+                    <textarea 
+                      className="input-field min-h-[100px] font-mono text-xs" 
+                      value={catalogText.frame_material} 
+                      onChange={e => setCatalogText(prev => ({ ...prev, frame_material: e.target.value }))} 
+                      placeholder="Metal | metal&#10;Plastic | plastic"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-ink-mid uppercase tracking-widest mb-1.5">Frame Shapes</label>
+                    <textarea 
+                      className="input-field min-h-[100px] font-mono text-xs" 
+                      value={catalogText.frame_shape} 
+                      onChange={e => setCatalogText(prev => ({ ...prev, frame_shape: e.target.value }))} 
+                      placeholder="Square | square&#10;Round | round"
+                    />
+                  </div>
+                  <div className="flex flex-col items-start gap-3 pt-6 border-t border-cream-border mt-6">
+                    <button className="btn-burgundy w-full flex items-center justify-center p-4 text-sm shadow-md" onClick={saveCatalog}>
+                      <Save size={20} className="mr-2" />
+                      {lang === 'ar' ? 'حفظ التغييرات' : 'Save Catalog Changes'}
                     </button>
+                    {saveStatus && <span className="text-sm font-bold text-emerald-600 animate-in fade-in slide-in-from-bottom-2">{saveStatus}</span>}
                   </div>
                 </div>
               </div>
@@ -280,11 +379,12 @@ export function Settings() {
                     onChange={e => setFormData({ ...formData, wa_template_1: e.target.value })}
                   />
                 </div>
-                <div className="flex justify-start pt-4 border-t border-cream-border mt-6">
-                  <button type="submit" className="btn-primary">
-                    <Save size={18} />
-                    {lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes'}
+                <div className="flex flex-col items-start gap-3 pt-6 border-t border-cream-border mt-6">
+                  <button type="submit" className="btn-burgundy w-full flex items-center justify-center p-4 text-sm shadow-md">
+                    <Save size={20} className="mr-2" />
+                    {lang === 'ar' ? 'حفظ التغييرات' : 'Save WhatsApp Settings'}
                   </button>
+                  {saveStatus && <span className="text-sm font-bold text-emerald-600 animate-in fade-in slide-in-from-bottom-2">{saveStatus}</span>}
                 </div>
               </form>
             )}

@@ -12,7 +12,9 @@ import {
   Stethoscope,
   Maximize2,
   Trash2,
-  Printer
+  Printer,
+  AlertTriangle,
+  X
 } from "lucide-react";
 import { useClinic } from "../context/ClinicContext";
 import { formatIQD, cn } from "../lib/utils";
@@ -24,8 +26,9 @@ export function Prescriptions() {
   const { t, lang, logAction } = useClinic();
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  useScrollLock(isModalOpen);
+  useScrollLock(isModalOpen || !!deleteConfirmId);
 
   // Mock Data
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([
@@ -130,20 +133,20 @@ export function Prescriptions() {
     });
   };
 
-  const handleDelete = (id: string) => {
-    const pr = prescriptions.find(p => p.id === id);
+  const confirmDelete = () => {
+    if (!deleteConfirmId) return;
+    const pr = prescriptions.find(p => p.id === deleteConfirmId);
     const patient = patients.find(p => p.id === pr?.patient_id);
     
-    if (confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذه الوصفة؟' : 'Are you sure you want to delete this prescription?')) {
-      setPrescriptions(prescriptions.filter(p => p.id !== id));
-      logAction({
-        action: "delete",
-        entity_type: "prescription",
-        entity_id: id,
-        entity_name: `Prescription for ${patient?.full_name || 'Patient'}`,
-        details: `Deleted prescription record for ${patient?.full_name}`
-      });
-    }
+    setPrescriptions(prescriptions.filter(p => p.id !== deleteConfirmId));
+    logAction({
+      action: "delete",
+      entity_type: "prescription",
+      entity_id: deleteConfirmId,
+      entity_name: `Prescription for ${patient?.full_name || 'Patient'}`,
+      details: `Deleted prescription record for ${patient?.full_name}`
+    });
+    setDeleteConfirmId(null);
   };
 
   return (
@@ -215,7 +218,7 @@ export function Prescriptions() {
                     <Printer size={16} />
                   </button>
                   <button 
-                    onClick={() => handleDelete(pr.id)}
+                    onClick={() => setDeleteConfirmId(pr.id)}
                     className="p-2 text-rose-300 hover:text-rose-600 transition-colors"
                   >
                     <Trash2 size={16} />
@@ -304,7 +307,7 @@ export function Prescriptions() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden overflow-y-auto max-h-[90vh]"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[37.8rem] overflow-hidden overflow-y-auto max-h-[90vh]"
           >
              <div className="bg-burgundy p-6 text-white sticky top-0 z-10">
               <h2 className="text-xl font-serif font-bold">{t("add_prescription")}</h2>
@@ -509,6 +512,52 @@ export function Prescriptions() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+          >
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={32} className="text-rose-600" />
+              </div>
+              <h3 className="text-xl font-bold text-ink mb-2">
+                {lang === 'ar' ? 'حذف الوصفة' : 'Delete Prescription'}
+              </h3>
+              <p className="text-sm text-ink-light mb-6">
+                {lang === 'ar' 
+                  ? 'هل أنت متأكد من أنك تريد حذف هذا السجل بشكل دائم؟' 
+                  : 'Are you sure you want to permanently delete this record?'}
+              </p>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="flex-1 py-3 bg-cream hover:bg-cream-dark text-ink-mid font-bold rounded-xl transition-all"
+                >
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-rose-600/20"
+                >
+                  {lang === 'ar' ? 'حذف' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+            <button 
+              onClick={() => setDeleteConfirmId(null)}
+              className="absolute top-4 end-4 text-ink-light hover:text-ink transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

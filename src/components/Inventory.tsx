@@ -24,7 +24,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { InventoryItem, Supplier } from "../types";
 
 export function Inventory() {
-  const { t, lang } = useClinic();
+  const { t, lang, isLoading } = useClinic();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"items" | "suppliers">("items");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -51,6 +51,8 @@ export function Inventory() {
     });
   }, [items, searchTerm, categoryFilter]);
 
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+
   const stats = useMemo(() => {
     const lowStockItemsCount = items.filter(i => i.stock_level <= i.reorder_point).length;
     const totalItems = items.reduce((acc, i) => acc + i.stock_level, 0);
@@ -61,6 +63,58 @@ export function Inventory() {
   const lowStockItems = useMemo(() => {
     return items.filter(i => i.stock_level <= i.reorder_point);
   }, [items]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-8 bg-zinc-200/50 rounded-lg w-48" />
+            <div className="h-4 bg-zinc-200/50 rounded-lg w-32" />
+          </div>
+          <div className="h-10 bg-zinc-200/50 rounded-lg w-full sm:w-40" />
+        </div>
+
+        {/* Stats Grid Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 bg-zinc-200/50 rounded-2xl w-full" />
+          ))}
+        </div>
+
+        {/* Filters/Tabs Skeleton */}
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex gap-2">
+            <div className="h-10 w-24 bg-zinc-200/50 rounded-xl" />
+            <div className="h-10 w-24 bg-zinc-200/50 rounded-xl" />
+          </div>
+          <div className="flex-1" />
+          <div className="h-10 w-full md:w-64 bg-zinc-200/50 rounded-xl" />
+          <div className="h-10 w-full md:w-32 bg-zinc-200/50 rounded-xl" />
+        </div>
+
+        {/* List Skeleton */}
+        <div className="flex flex-col border border-zinc-200/50 rounded-xl bg-white divide-y divide-zinc-200/50 mt-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+             <div key={i} className="p-4 grid grid-cols-12 gap-4 items-center">
+               <div className="col-span-12 lg:col-span-4 flex items-center gap-3">
+                 <div className="w-10 h-10 bg-zinc-200/50 rounded-xl shrink-0" />
+                 <div className="space-y-2 w-full">
+                   <div className="h-4 bg-zinc-200/50 rounded w-32" />
+                   <div className="h-3 bg-zinc-200/50 rounded w-16" />
+                 </div>
+               </div>
+               <div className="hidden lg:block lg:col-span-2 h-4 bg-zinc-200/50 rounded w-20" />
+               <div className="hidden lg:block lg:col-span-2 h-4 bg-zinc-200/50 rounded w-16" />
+               <div className="hidden lg:block lg:col-span-2 h-4 bg-zinc-200/50 rounded w-20" />
+               <div className="hidden lg:block lg:col-span-2 h-8 bg-zinc-200/50 rounded-lg w-16 justify-self-end" />
+             </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -184,18 +238,50 @@ export function Inventory() {
               className="space-y-4"
             >
               {/* Filters */}
-              <div className="flex flex-col md:flex-row gap-3">
-                <div className="flex-1 relative group">
-                  <Search className="absolute start-4 top-1/2 -translate-y-1/2 text-ink-light group-focus-within:text-burgundy transition-colors" size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="Search by product name or SKU..."
-                    className="w-full ps-12 pe-4 py-3 bg-white border-2 border-cream-border rounded-xl focus:border-burgundy focus:shadow-lg focus:shadow-burgundy/5 transition-all outline-none"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+              <div className="flex flex-col md:flex-row gap-3 items-center justify-between mb-2">
+                <div className="flex items-center gap-3 w-full md:w-auto flex-1">
+                  <div 
+                    className={cn(
+                      "relative group transition-all duration-300 ease-in-out h-full flex items-center",
+                      isSearchExpanded || searchTerm ? "w-full md:w-80" : "w-[46px]"
+                    )}
+                    onMouseEnter={() => setIsSearchExpanded(true)}
+                    onMouseLeave={() => {
+                      if (!searchTerm && document.activeElement?.id !== 'inventory-search') {
+                        setIsSearchExpanded(false);
+                      }
+                    }}
+                  >
+                    <div className={cn(
+                      "absolute inset-0 bg-white border-2 rounded-xl transition-all duration-300",
+                      isSearchExpanded || searchTerm ? "border-burgundy shadow-lg shadow-burgundy/5" : "border-cream-border hover:border-burgundy/50 cursor-pointer"
+                    )} onClick={() => { setIsSearchExpanded(true); setTimeout(() => document.getElementById('inventory-search')?.focus(), 50); }} />
+                    <Search 
+                      className={cn(
+                        "absolute start-3.5 top-1/2 -translate-y-1/2 transition-colors z-10 pointer-events-none",
+                        isSearchExpanded || searchTerm ? "text-burgundy" : "text-ink-light group-hover:text-burgundy"
+                      )} 
+                      size={18} 
+                    />
+                    <input 
+                      id="inventory-search"
+                      type="text" 
+                      placeholder={isSearchExpanded || searchTerm ? "Search by product name or SKU..." : ""}
+                      className={cn(
+                        "w-full h-full min-h-[46px] ps-10 pe-4 bg-transparent transition-all outline-none text-sm relative z-10",
+                        isSearchExpanded || searchTerm ? "opacity-100" : "opacity-0 cursor-pointer w-[46px]"
+                      )}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onFocus={() => setIsSearchExpanded(true)}
+                      onBlur={() => {
+                        if (!searchTerm) setIsSearchExpanded(false);
+                      }}
+                    />
+                  </div>
+                  <div className={cn("hidden md:block flex-1 transition-all", isSearchExpanded || searchTerm ? "w-0" : "w-auto")} />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 w-full md:w-auto">
                   <select 
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}

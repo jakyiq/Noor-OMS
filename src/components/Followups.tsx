@@ -8,6 +8,7 @@ import { motion } from "motion/react";
 export function Followups() {
   const { t, lang, clinic, setFollowupCount, patients } = useClinic();
   const [searchTerm, setSearchTerm] = useState("");
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
   const followups = useMemo(() => {
     const list: any[] = [];
@@ -97,16 +98,48 @@ export function Followups() {
       </div>
 
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col md:flex-row gap-3">
-          <div className="flex-1 relative group">
-            <Search className="absolute start-4 top-1/2 -translate-y-1/2 text-ink-light group-focus-within:text-burgundy transition-colors" size={18} />
-            <input 
-              type="text" 
-              placeholder={lang === 'ar' ? "البحث عن مريض..." : "Search patient..."}
-              className="w-full ps-12 pe-4 py-3 bg-white border-2 border-cream-border rounded-xl focus:border-burgundy focus:shadow-lg focus:shadow-burgundy/5 transition-all outline-none"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between mb-2">
+          <div className="flex items-center gap-3 w-full md:w-auto flex-1">
+            <div 
+              className={cn(
+                "relative group transition-all duration-300 ease-in-out h-full flex items-center",
+                isSearchExpanded || searchTerm ? "w-full md:w-80" : "w-[46px]"
+              )}
+              onMouseEnter={() => setIsSearchExpanded(true)}
+              onMouseLeave={() => {
+                if (!searchTerm && document.activeElement?.id !== 'followups-search') {
+                  setIsSearchExpanded(false);
+                }
+              }}
+            >
+              <div className={cn(
+                "absolute inset-0 bg-white border-2 rounded-xl transition-all duration-300",
+                isSearchExpanded || searchTerm ? "border-burgundy shadow-lg shadow-burgundy/5" : "border-cream-border hover:border-burgundy/50 cursor-pointer"
+              )} onClick={() => { setIsSearchExpanded(true); setTimeout(() => document.getElementById('followups-search')?.focus(), 50); }} />
+              <Search 
+                className={cn(
+                  "absolute start-3.5 top-1/2 -translate-y-1/2 transition-colors z-10 pointer-events-none",
+                  isSearchExpanded || searchTerm ? "text-burgundy" : "text-ink-light group-hover:text-burgundy"
+                )} 
+                size={18} 
+              />
+              <input 
+                id="followups-search"
+                type="text" 
+                placeholder={isSearchExpanded || searchTerm ? (lang === 'ar' ? "البحث عن مريض..." : "Search patient...") : ""}
+                className={cn(
+                  "w-full h-full min-h-[46px] ps-10 pe-4 bg-transparent transition-all outline-none text-sm relative z-10",
+                  isSearchExpanded || searchTerm ? "opacity-100" : "opacity-0 cursor-pointer w-[46px]"
+                )}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onFocus={() => setIsSearchExpanded(true)}
+                onBlur={() => {
+                  if (!searchTerm) setIsSearchExpanded(false);
+                }}
+              />
+            </div>
+            <div className={cn("hidden md:block flex-1 transition-all", isSearchExpanded || searchTerm ? "w-0" : "w-auto")} />
           </div>
         </div>
       </div>
@@ -136,7 +169,7 @@ export function Followups() {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.05 }}
-                key={item.patient_id}
+                key={`${item.patient_id}-${item.visit_date}-${idx}`}
                 className="lg:grid lg:grid-cols-12 lg:gap-4 px-4 lg:px-6 py-5 lg:py-4 bg-white border border-cream-border lg:border-none rounded-2xl lg:rounded-none items-center hover:bg-cream/50 transition-all relative shadow-sm lg:shadow-none"
               >
                 <div className="col-span-3 flex flex-col justify-center mb-3 lg:mb-0">
