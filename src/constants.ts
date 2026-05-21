@@ -1,9 +1,9 @@
 export const TRANSLATIONS = {
   ar: {
     main_nav: "الرئيسية",
-    inventory_nav: "المخزون",
+    inventory_nav: "المخزن",
     reports_settings_nav: "التقارير والإعدادات",
-    inventory: "المخزون",
+    inventory: "المخزن",
     dashboard: "لوحة التحكم",
     patients: "المراجعين",
     followups: "المتابعات",

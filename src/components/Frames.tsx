@@ -215,7 +215,7 @@ export function Frames() {
 
       {/* List */}
       <div className="bg-white rounded-xl shadow-sm border border-cream-border overflow-x-auto">
-        <table className="w-full text-start whitespace-nowrap">
+        <table className="w-full text-start whitespace-nowrap min-w-[700px]">
           <thead className="bg-cream/50 border-b border-cream-border text-[10px] uppercase tracking-widest text-ink-light">
             <tr>
               <th className="px-4 py-3 text-start font-bold">Brand & Model</th>
@@ -452,7 +452,34 @@ export function Frames() {
                 <button onClick={() => setRestockFrame(null)} className="flex-1 py-2.5 text-sm font-bold text-ink-mid hover:bg-cream rounded-xl transition-colors">Cancel</button>
                 <button 
                   onClick={() => {
-                    setFrames(prev => prev.map(f => f.id === restockFrame.id ? { ...f, quantity: f.quantity + restockAmount } : f));
+                    if (restockAmount > 0) {
+                      setFrames(prev => prev.map(f => f.id === restockFrame.id ? { ...f, quantity: f.quantity + restockAmount } : f));
+                      
+                      // Ledger this inside reports as an opex expense
+                      const totalCost = Number(restockAmount) * Number(restockFrame.cost_price || 15000);
+                      let currentExps = [];
+                      const savedExps = localStorage.getItem("noor_expenses");
+                      if (savedExps) {
+                        try {
+                          currentExps = JSON.parse(savedExps);
+                        } catch (err) {
+                          currentExps = [];
+                        }
+                      }
+                      
+                      const newExpense = {
+                        id: "e_frame_restock_" + Math.random().toString(36).substring(7),
+                        description: lang === "ar"
+                          ? `توريد وإعادة تزويد مخزون إطارات [${restockFrame.brand} - ${restockFrame.model}] عدد ${restockAmount}`
+                          : `Restocked Frames: ${restockFrame.brand} - ${restockFrame.model} (Qty x${restockAmount})`,
+                        category: "other" as const,
+                        amount: totalCost,
+                        date: new Date().toISOString().split("T")[0]
+                      };
+                      
+                      currentExps.unshift(newExpense);
+                      localStorage.setItem("noor_expenses", JSON.stringify(currentExps));
+                    }
                     setRestockFrame(null);
                   }}
                   className="flex-1 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors shadow-md shadow-blue-600/20"

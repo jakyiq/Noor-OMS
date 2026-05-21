@@ -8,11 +8,13 @@ export function useScrollLock(lock: boolean) {
       lockCount++;
       if (lockCount === 1) {
         document.body.style.setProperty('overflow', 'hidden', 'important');
+        document.body.classList.add('modal-open');
       }
       return () => {
         lockCount--;
         if (lockCount === 0) {
           document.body.style.removeProperty('overflow');
+          document.body.classList.remove('modal-open');
         }
       };
     }

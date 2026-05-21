@@ -17,13 +17,14 @@ import { AuditLog } from "./components/AuditLog";
 import { Settings } from "./components/Settings";
 import { Reports } from "./components/Reports";
 import { Auth } from "./components/Auth";
-import { QuickSellModal } from "./components/QuickSellModal";
+import AdminPanel from "./components/AdminPanel";
+
 import { ClinicProvider, useClinic } from "./context/ClinicContext";
 import { cn } from "./lib/utils";
 import { useScrollLock } from "./hooks/useScrollLock";
 
 function AppContent() {
-  const { user, currentSection } = useClinic();
+  const { user, currentSection, impersonatedClinic, setImpersonatedClinic, lang } = useClinic();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -53,6 +54,8 @@ function AppContent() {
         return <Settings />;
       case "reports":
         return <Reports />;
+      case "superadmin":
+        return <AdminPanel />;
       default:
         return (
           <div className="flex flex-col items-center justify-center min-h-[60vh] text-ink-light space-y-4">
@@ -70,6 +73,24 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-cream selection:bg-burgundy/10 overflow-x-hidden">
+      {impersonatedClinic && (
+        <div className="bg-amber-600 text-amber-50 text-xs font-bold py-3 px-4 flex justify-between items-center gap-4 sticky top-0 z-50 shadow-md">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">⚠️</span>
+            <span>
+              {lang === "ar" 
+                ? `أنت في وضع محاكاة عيادة: [ ${impersonatedClinic} ]` 
+                : `Currently impersonating clinic account: [ ${impersonatedClinic} ]`}
+            </span>
+          </div>
+          <button 
+            onClick={() => setImpersonatedClinic(null)}
+            className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-[10px] tracking-wide uppercase font-bold transition-all border border-white/20"
+          >
+            {lang === "ar" ? "إنهاء المحاكاة" : "Exit Impersonation"}
+          </button>
+        </div>
+      )}
       {/* Sidebar */}
       <Sidebar 
         collapsed={collapsed} 
@@ -109,7 +130,7 @@ function AppContent() {
 
 
         <footer className="px-8 py-6 border-t border-cream-border flex flex-col sm:flex-row items-center justify-between gap-4 text-[10px] font-bold text-ink-light tracking-widest uppercase">
-          <p>© 2024 NOOR OPTICAL MANAGEMENT SYSTEM · v2.0 MODERN REDESIGN</p>
+          <p>© {new Date().getFullYear()} NOOR OPTICAL MANAGEMENT SYSTEM · v2.0 MODERN REDESIGN</p>
           <div className="flex gap-4">
             <span className="hover:text-burgundy cursor-pointer transition-colors">Privacy Policy</span>
             <span className="hover:text-burgundy cursor-pointer transition-colors">Support</span>
@@ -117,8 +138,7 @@ function AppContent() {
         </footer>
       </div>
 
-      {/* Global POS Quick Sell Modal */}
-      <QuickSellModal />
+
     </div>
   );
 }

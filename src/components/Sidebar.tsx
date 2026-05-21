@@ -15,12 +15,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Globe,
-  ShoppingCart
+  ShoppingCart,
+  Star
 } from "lucide-react";
 import { useClinic } from "../context/ClinicContext";
 import { cn } from "../lib/utils";
 import { Section } from "../types";
 import { motion } from "motion/react";
+import { EyeLensLogo } from "./EyeLensLogo";
 
 export function Sidebar({ 
   collapsed, 
@@ -49,16 +51,16 @@ export function Sidebar({
       items: [
         { id: "lenses", label: t("lenses"), icon: Disc },
         { id: "frames", label: t("frames"), icon: Glasses },
-        { id: "inventory", label: lang === "ar" ? "بيع سريع" : "Inventory", icon: ShoppingCart },
+        { id: "inventory", label: t("inventory"), icon: ShoppingCart },
       ]
     },
     {
       groupLabel: t("reports_settings_nav") as string,
       items: [
-        { id: "reports", label: t("reports"), icon: FileBarChart },
+        { id: "reports", label: t("reports"), icon: FileBarChart, role: "doctor" as const },
         { id: "settings", label: t("settings"), icon: Settings },
-        { id: "audit", label: t("audit"), icon: ShieldCheck },
-        { id: "superadmin", label: "Admin", icon: Lock, role: "super_admin" },
+        { id: "audit", label: t("audit"), icon: ShieldCheck, role: "doctor" as const },
+        { id: "superadmin", label: "Super Admin", icon: Star, role: "super_admin" as const },
       ]
     }
   ] as const;
@@ -80,8 +82,8 @@ export function Sidebar({
     )}>
       {/* Header */}
       <div className="p-4 flex items-center gap-3 border-b border-white/10">
-        <div className="w-10 h-10 bg-white/15 rounded-lg flex items-center justify-center shrink-0">
-          <Disc className="text-white w-6 h-6" />
+        <div className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center shrink-0 border border-white/15 shadow-sm">
+          <EyeLensLogo size={24} className="text-white" />
         </div>
         {(!collapsed || mobileOpen) && (
           <motion.div 
@@ -105,7 +107,22 @@ export function Sidebar({
               </div>
             )}
             {group.items.map((item) => {
-              if ("role" in item && item.role && user?.role !== item.role) return null;
+              if (item.id === "superadmin" && user?.role !== "super_admin") return null;
+              if (item.id === "reports") {
+                const isDoc = user?.role === "doctor" || user?.role === "super_admin";
+                const hasPerm = user?.role === "receptionist" && user?.permissions?.viewFinancials;
+                if (!isDoc && !hasPerm) return null;
+              }
+              if (item.id === "audit") {
+                const isDoc = user?.role === "doctor" || user?.role === "super_admin";
+                const hasPerm = user?.role === "receptionist" && user?.permissions?.auditOrders;
+                if (!isDoc && !hasPerm) return null;
+              }
+              if (item.id === "settings") {
+                const isDoc = user?.role === "doctor" || user?.role === "super_admin";
+                const hasPerm = user?.role === "receptionist" && user?.permissions?.editSettings;
+                if (!isDoc && !hasPerm) return null;
+              }
               const isActive = currentSection === item.id;
               const Icon = item.icon;
 

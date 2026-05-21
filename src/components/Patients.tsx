@@ -8,10 +8,57 @@ import { subDays, isAfter, parseISO } from "date-fns";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { NewVisitModal } from "./NewVisitModal";
 
+const getThemeColorHex = (themeId: string) => {
+  const map = {
+    burgundy: "#800020",
+    navy: "#1a4a8d",
+    emerald: "#064e3b",
+    charcoal: "#1f2937",
+    gold: "#b45309"
+  };
+  return map[themeId as keyof typeof map] || "#800020";
+};
+
+const getPresetLogoSvg = (presetId: string, theme: string) => {
+  const themeHexMap = {
+    burgundy: "800020",
+    navy: "1a4a8d",
+    emerald: "064e3b",
+    charcoal: "1f2937",
+    gold: "b45309"
+  };
+  const color = themeHexMap[theme as keyof typeof themeHexMap] || "800020";
+  
+  if (presetId === "preset_1") {
+    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="%23${color}" stroke-width="6"><path d="M10 50 Q50 15 90 50 Q50 85 10 50 Z"/><circle cx="50" cy="50" r="18" fill="%23${color}"/><circle cx="50" cy="50" r="8" fill="white"/></svg>`;
+  }
+  if (presetId === "preset_2") {
+    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="%23${color}" stroke-width="6"><path d="M20 15 L50 7 L80 15 Q80 55 50 85 Q20 55 20 15 Z" fill="none"/><circle cx="50" cy="45" r="14" fill="%23${color}"/><path d="M40 45 H60 M50 35 V55" stroke="white" stroke-width="4"/></svg>`;
+  }
+  if (presetId === "preset_3") {
+    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="%23${color}" stroke-width="6"><circle cx="30" cy="50" r="18" fill="none"/><circle cx="70" cy="50" r="18" fill="none"/><path d="M48 50 Q50 44 52 50" stroke="%23${color}" stroke-width="6"/><path d="M12 50 H15 M85 50 H88" stroke="%23${color}" stroke-width="4"/><path d="M30 32 L20 15 M70 32 L80 15" stroke="%23${color}" stroke-width="6"/></svg>`;
+  }
+  return "";
+};
+
 export function Patients() {
-  const { t, lang, logAction, triggerAddPatient, currentSection, patients, setPatients, setCurrentSection, clinic, isLoading, setLenses, setFrames } = useClinic();
+  const { t, lang, logAction, triggerAddPatient, currentSection, patients, setPatients, setCurrentSection, clinic, isLoading, lenses, setLenses, frames, setFrames, user } = useClinic();
   const defaultFollowUpMonths = clinic?.default_followup_months ?? 3;
   const [searchTerm, setSearchTerm] = useState("");
+  
+  const canEditPatients = useMemo(() => {
+    if (!user) return true;
+    if (user.role === "doctor" || user.role === "super_admin") return true;
+    return !!user.permissions?.editPatients;
+  }, [user]);
+
+  const receptionists = useMemo(() => {
+    const saved = localStorage.getItem("noor_receptionists");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return [];
+  }, []);
   const [genderFilter, setGenderFilter] = useState("all");
   const [debtFilter, setDebtFilter] = useState("all");
   const [visitFilter, setVisitFilter] = useState("all");
@@ -36,7 +83,7 @@ export function Patients() {
   const [deletePatientConfirm, setDeletePatientConfirm] = useState<any | null>(null);
   const [deleteVisitConfirmId, setDeleteVisitConfirmId] = useState<string | null>(null);
 
-  useScrollLock(isModalOpen || !!printingVisit || isOldPrescriptionModalOpen || isNewVisitModalOpen || !!deletePatientConfirm || !!deleteVisitConfirmId);
+  useScrollLock(isModalOpen || !!printingVisit || isOldPrescriptionModalOpen || isNewVisitModalOpen || !!deletePatientConfirm || !!deleteVisitConfirmId || !!topUpPatientId);
 
   useEffect(() => {
     if (triggerAddPatient > 0) {
@@ -178,11 +225,16 @@ export function Patients() {
 
   const handleDeletePatient = (e: React.MouseEvent, patient: any) => {
     e.stopPropagation();
+    if (!canEditPatients) {
+      alert(lang === 'ar' ? "ليس لديك صلاحية لتعديل أو حذف المرضى." : "You do not have permission to edit or delete patients.");
+      return;
+    }
     setDeletePatientConfirm({ id: patient.id, name: patient.full_name });
   };
 
   const confirmDeletePatient = () => {
     if (!deletePatientConfirm) return;
+    if (!canEditPatients) return;
     setPatients(patients.filter(p => p.id !== deletePatientConfirm.id));
     logAction({
       action: "delete",
@@ -199,6 +251,10 @@ export function Patients() {
 
   const handleDeleteVisit = (visitId: string) => {
     if (!selectedPatient) return;
+    if (!canEditPatients) {
+      alert(lang === 'ar' ? "ليس لديك صلاحية لتعديل أو حذف زيارات المرضى." : "You do not have permission to edit or delete patient visits.");
+      return;
+    }
     setDeleteVisitConfirmId(visitId);
   };
 
@@ -369,6 +425,10 @@ export function Patients() {
   };
 
   const handleEditVisit = (visit: any) => {
+    if (!canEditPatients) {
+      alert(lang === 'ar' ? "ليس لديك صلاحية لتعديل زيارات المرضى." : "You do not have permission to edit patient visits.");
+      return;
+    }
     setEditingVisitId(visit.id);
     setVisitToEdit(visit);
     setIsNewVisitModalOpen(true);
@@ -401,6 +461,22 @@ export function Patients() {
     };
     const finalDiagnosis = baseDiagnosis + generateAutoDiagnosis(rxDataForDiagnosis);
 
+    // Calculate cost price of goods sold for this transaction/visit
+    let itemCost = 0;
+    if (visitData.matchedOdLensId) {
+      const match = lenses?.find((l: any) => l.id === visitData.matchedOdLensId);
+      if (match) itemCost += (match.cost_price || 0);
+    }
+    if (visitData.matchedOsLensId) {
+      const match = lenses?.find((l: any) => l.id === visitData.matchedOsLensId);
+      if (match) itemCost += (match.cost_price || 0);
+    }
+    const frameId = visitData.matchedFrameId || visitData.frameStockItem;
+    if (visitData.includeFrame && frameId) {
+      const match = frames?.find((f: any) => f.id === frameId);
+      if (match) itemCost += (match.cost_price || 0);
+    }
+
     const newVisitObj = {
       id: editingVisitId || Math.random().toString(36).substr(2, 9),
       patient_id: selectedPatientId,
@@ -410,6 +486,7 @@ export function Patients() {
       total_amount: totalSelectedCost,
       amount_paid: paid,
       remaining: Math.max(0, totalSelectedCost - paid),
+      visit_cost: itemCost, // Records cost of goods sold (COGS)
       rawFormData: visitData,
       rxData: {
         od: visitData.eyesCount !== 'os' ? {
@@ -491,6 +568,10 @@ export function Patients() {
 
   const openEditModal = (e: React.MouseEvent, patient: any) => {
     e.stopPropagation();
+    if (!canEditPatients) {
+      alert(lang === 'ar' ? "ليس لديك صلاحية لتعديل سجلات المرضى." : "You do not have permission to edit patient records.");
+      return;
+    }
     setEditingPatientId(patient.id);
     setFormData({
       full_name: patient.full_name,
@@ -1096,67 +1177,137 @@ export function Patients() {
 
       {/* Print Template for Visit */}
       {printingVisit && selectedPatient && (
-        <div id="print-area" className="hidden print:block p-8 bg-white text-ink font-serif absolute inset-0 z-[100]">
-          <div className="border-b-2 border-burgundy pb-6 mb-8 flex justify-between items-end">
-            <div>
-              <h1 className="text-3xl font-bold text-burgundy">نـور OMS</h1>
-              <p className="text-xs tracking-widest text-ink-light uppercase">Noor Optical Management System</p>
+        <div id="print-area" className="hidden print:block p-10 bg-white text-slate-800 font-serif absolute inset-0 z-[100] text-start" style={{ minHeight: "297mm" }}>
+          {/* Elegant Letterhead Top Border */}
+          <div className="w-full h-1.5 mb-6" style={{ backgroundColor: getThemeColorHex(clinic?.print_theme || "burgundy") }} />
+          
+          {/* Header section with Dynamic Brand details */}
+          <div className="border-b pb-4 mb-6 flex justify-between items-start" style={{ borderBottomColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}25` }}>
+            <div className="flex gap-4 items-center">
+              {clinic?.print_logo_base64 ? (
+                <img 
+                  src={clinic.print_logo_base64.startsWith("preset_") ? getPresetLogoSvg(clinic.print_logo_base64, clinic.print_theme || "burgundy") : clinic.print_logo_base64} 
+                  className="w-16 h-16 object-contain" 
+                  alt="Clinic Logo" 
+                />
+              ) : (
+                <div className="w-16 h-16 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400">LOGO</div>
+              )}
+              <div>
+                <h1 className="text-2xl font-bold font-serif m-0" style={{ color: getThemeColorHex(clinic?.print_theme || "burgundy") }}>
+                  {clinic?.name || "مركز نـور للعيون"}
+                </h1>
+                <p className="text-[10px] font-sans tracking-wide text-slate-500 uppercase m-0 mt-0.5">{clinic?.address || "Noor Optical Management System"}</p>
+                <p className="text-[9px] font-sans text-slate-400 m-0">Baghdad, Iraq</p>
+              </div>
             </div>
-            <div className="text-end">
-              <h2 className="text-xl font-bold uppercase tracking-tight">{t("financial_summary")}</h2>
-              <p className="text-sm font-medium">{printingVisit.visit_date}</p>
+
+            <div className="text-end font-sans">
+              <h2 className="text-xs font-bold text-slate-900 leading-tight m-0">
+                {clinic?.doctor_credentials || "Dr. Ahmed Al-Rashid, Ophthalmic & Optics Specialist"}
+              </h2>
+              <p className="text-[10px] text-slate-500 mt-1 m-0">
+                📞 {clinic?.doctor_phone || "+964 770 123 4567"}
+              </p>
+              <div className="mt-2 text-[8px] font-bold text-white px-2 py-0.5 rounded inline-block uppercase tracking-wider" style={{ backgroundColor: getThemeColorHex(clinic?.print_theme || "burgundy") }}>
+                {t("financial_summary")}
+              </div>
+              <p className="text-[9px] text-slate-400 mt-1 m-0">{printingVisit.visit_date}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-8 mb-12">
-            <div className="space-y-4">
-              <div className="border-b border-cream-border pb-2">
-                <p className="text-[10px] font-bold text-burgundy uppercase tracking-widest">{t("name")}</p>
-                <p className="text-lg font-bold">{selectedPatient.full_name}</p>
-              </div>
-              <div className="border-b border-cream-border pb-2">
-                <p className="text-[10px] font-bold text-burgundy uppercase tracking-widest">{t("phone")}</p>
-                <p className="text-lg font-bold">{selectedPatient.phone}</p>
-              </div>
+          {/* Patient Details Row */}
+          <div className="grid grid-cols-2 gap-4 mb-6 text-xs font-sans">
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <strong className="text-slate-400 uppercase tracking-widest text-[8px] block mb-1">{t("name")}</strong>
+              <span className="font-bold text-slate-900 text-sm">
+                {selectedPatient.full_name}
+              </span>
             </div>
-            <div className="flex flex-col justify-end items-end">
-              <div className="p-4 bg-cream/30 rounded-xl border-2 border-burgundy/10 text-center min-w-[150px]">
-                <p className="text-[10px] font-bold text-burgundy uppercase mb-1">{t("remaining")}</p>
-                <p className="text-2xl font-bold text-rose-600">{formatIQD(printingVisit.remaining)}</p>
+            <div className="p-3 rounded-lg bg-[#faf8f5] border border-cream-border text-end">
+              <strong className="text-slate-400 uppercase tracking-widest text-[8px] block mb-1">{t("phone")}</strong>
+              <span className="font-bold text-slate-800 text-sm font-mono">
+                {selectedPatient.phone}
+              </span>
+            </div>
+          </div>
+
+          {/* Diagnosis Block */}
+          <div className="space-y-6 mb-8 font-sans">
+            <div className="p-4 rounded-xl border bg-slate-50/20" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>
+              <h4 className="text-[8px] font-bold uppercase tracking-widest mb-1.5 text-start" style={{ color: getThemeColorHex(clinic?.print_theme || "burgundy") }}>{t("diagnosis_label")}</h4>
+              <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap m-0 text-start">{printingVisit.diagnosis || "No specific diagnosis recorded"}</p>
+            </div>
+
+            {/* Financial Grid */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 border rounded-lg text-start" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>
+                <p className="text-[8px] font-bold text-slate-400 uppercase mb-0.5">{t("total")}</p>
+                <p className="text-sm font-extrabold font-mono text-slate-800 m-0">{formatIQD(printingVisit.total_amount)}</p>
+              </div>
+              <div className="p-3 border border-emerald-100 bg-emerald-50/20 rounded-lg text-start">
+                <p className="text-[8px] font-bold text-emerald-600 uppercase mb-0.5">{t("paid")}</p>
+                <p className="text-sm font-extrabold font-mono text-emerald-700 m-0">+{formatIQD(printingVisit.amount_paid)}</p>
+              </div>
+              <div className="p-3 border border-rose-100 bg-rose-50/20 rounded-lg text-end">
+                <p className="text-[8px] font-bold text-rose-600 uppercase mb-0.5">{t("remaining")}</p>
+                <p className="text-sm font-extrabold font-mono text-rose-700 m-0">{formatIQD(printingVisit.remaining)}</p>
               </div>
             </div>
           </div>
 
-          <div className="space-y-6 mb-12">
-            <div className="p-6 bg-cream/30 rounded-2xl border border-cream-border">
-              <h4 className="text-xs font-bold text-burgundy uppercase tracking-widest mb-3">{t("diagnosis_label")}</h4>
-              <p className="text-lg leading-relaxed whitespace-pre-wrap">{printingVisit.diagnosis || "No specific diagnosis recorded"}</p>
+          {/* Specific Instructions Support */}
+          {clinic?.print_instructions && (
+            <div className="p-4 rounded-xl border mb-10 text-xs font-sans leading-relaxed text-slate-700 bg-slate-50/30 text-start" style={{ borderLeft: `4px solid ${getThemeColorHex(clinic?.print_theme || "burgundy")}`, borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>
+              <strong className="block text-[8.5px] text-slate-500 uppercase tracking-widest font-sans mb-1.5">
+                {lang === 'ar' ? '📋 إرشادات الطبيب وملاحظات الرعاية:' : '📋 Optical Care Instructions & Dr. Advice:'}
+              </strong>
+              <div className="whitespace-pre-line text-slate-700 font-sans">{clinic.print_instructions}</div>
+            </div>
+          )}
+
+          {/* Footer & QR */}
+          <div className="mt-auto pt-6 border-t flex justify-between items-end gap-4" style={{ borderTopColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}25` }}>
+            {/* Associates & Staff listed at the bottom */}
+            <div className="space-y-1 font-sans flex-1 text-start">
+              {clinic?.show_staff_on_print && (
+                <>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest m-0 leading-tight">
+                    {lang === 'ar' ? 'أطباء وزملاء العمل المعتمدين بالمركز' : 'Active Clinic Staff & Care Associates'}
+                  </p>
+                  <p className="text-[9px] text-slate-600 leading-tight m-0">{clinic.print_associates}</p>
+                  {receptionists.length > 0 && (
+                    <p className="text-[8px] text-slate-500 italic mt-0.5 m-0 leading-tight">
+                      {lang === 'ar' ? 'الاستقبال: ' : 'Reception Assistants: '}
+                      {receptionists.map((r: any) => r.full_name).join(', ')}
+                    </p>
+                  )}
+                </>
+              )}
+              <p className="text-[7.5px] text-slate-400 mt-2 m-0 font-mono">
+                Noor Optical Print Service Engine A5 • Secure Visit Invoice
+              </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="p-4 border border-cream-border rounded-xl">
-                <p className="text-[10px] font-bold text-ink-light uppercase mb-1">{t("total")}</p>
-                <p className="text-xl font-bold font-mono">{formatIQD(printingVisit.total_amount)}</p>
+            {/* Custom QR centered logo representation */}
+            <div className="flex flex-col items-center shrink-0">
+              <div className="relative w-18 h-18 bg-white border border-slate-200 p-0.5 rounded-lg flex items-center justify-center shadow-xs">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`Optical Visit signed by ${clinic?.doctor_credentials || "Dr. Ahmed"} for Patient: ${selectedPatient.full_name}. Remainder: ${formatIQD(printingVisit.remaining)}`)}`} 
+                  className="w-full h-full object-contain" 
+                  alt="QR Code" 
+                />
+                {clinic?.print_logo_base64 && (
+                  <div className="absolute w-4 h-4 bg-white rounded-full p-0.5 shadow flex items-center justify-center overflow-hidden">
+                    <img 
+                      src={clinic.print_logo_base64.startsWith("preset_") ? getPresetLogoSvg(clinic.print_logo_base64, clinic.print_theme || "burgundy") : clinic.print_logo_base64} 
+                      className="w-full h-full object-contain rounded-full" 
+                      alt="Icon Center" 
+                    />
+                  </div>
+                )}
               </div>
-              <div className="p-4 border border-emerald-100 bg-emerald-50/30 rounded-xl">
-                <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">{t("paid")}</p>
-                <p className="text-xl font-bold font-mono text-emerald-700">+{formatIQD(printingVisit.amount_paid)}</p>
-              </div>
-              <div className="p-4 border border-rose-100 bg-rose-50/30 rounded-xl">
-                <p className="text-[10px] font-bold text-rose-600 uppercase mb-1">{t("remaining")}</p>
-                <p className="text-xl font-bold font-mono text-rose-700">{formatIQD(printingVisit.remaining)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-20 pt-12 border-t-2 border-burgundy/10 flex justify-between">
-            <div className="text-sm font-medium text-ink-light">
-              <p>Baghdad, Iraq • +964 7XX XXX XXXX</p>
-              <p>Thank you for choosing Noor Optical</p>
-            </div>
-            <div className="text-center">
-              <div className="w-32 h-1 bg-burgundy/10 mb-2 invisible print:visible" />
-              <p className="text-[10px] font-bold text-burgundy uppercase">Official Clinic Stamp</p>
+              <span className="text-[7.5px] font-bold text-slate-500 mt-1 uppercase tracking-widest font-sans">{lang === 'ar' ? 'كود التحقق' : 'Verify Certificate'}</span>
             </div>
           </div>
         </div>

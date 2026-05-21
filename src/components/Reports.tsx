@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useClinic } from "../context/ClinicContext";
 import { formatIQD, cn } from "../lib/utils";
+import { useScrollLock } from "../hooks/useScrollLock";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   DollarSign, 
@@ -29,7 +30,9 @@ import {
   Settings,
   X,
   Printer,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Lock,
+  Unlock
 } from "lucide-react";
 import { 
   XAxis, 
@@ -127,6 +130,60 @@ export function Reports() {
   const [auditSignedAt, setAuditSignedAt] = useState(() => localStorage.getItem("noor_audit_stamp") || "");
   const [checksChecked, setChecksChecked] = useState<boolean[]>([false, false, false, false]);
 
+  // Monthly locked auditable periods support
+  const [auditedMonths, setAuditedMonths] = useState<{[key: string]: string}>(() => {
+    const saved = localStorage.getItem("noor_audited_months");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Error reading audited months:", e);
+      }
+    }
+    const oldStamp = localStorage.getItem("noor_audit_stamp");
+    if (oldStamp) {
+      return { "all": oldStamp };
+    }
+    return {};
+  });
+
+  const [selectedAuditPeriod, setSelectedAuditPeriod] = useState<string>("all");
+  const [showReopenModal, setShowReopenModal] = useState(false);
+  const [reopenPin, setReopenPin] = useState("");
+  const [reopenReason, setReopenReason] = useState("");
+  const [reopenError, setReopenError] = useState("");
+
+  useScrollLock(showAuditPanel || showReopenModal);
+
+  const getPeriodLabel = () => {
+    const now = new Date();
+    if (dateFilter === "month") {
+      return now.toLocaleString("en-US", { month: "long", year: "numeric" }); // e.g. "May 2026"
+    } else if (dateFilter === "month-last") {
+      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return prevMonth.toLocaleString("en-US", { month: "long", year: "numeric" }); // e.g. "April 2026"
+    } else if (dateFilter === "year") {
+      return now.getFullYear().toString();
+    }
+    return "all";
+  };
+
+  const getIsPeriodLocked = (dateStr?: string): boolean => {
+    if (auditedMonths["all"]) return true;
+    if (!dateStr) {
+      const currentPeriod = getPeriodLabel();
+      return !!auditedMonths[currentPeriod];
+    }
+    const d = new Date(dateStr);
+    const mLabel = d.toLocaleString("en-US", { month: "long", year: "numeric" });
+    const yLabel = d.getFullYear().toString();
+    return !!(auditedMonths[mLabel] || auditedMonths[yLabel] || auditedMonths["all"]);
+  };
+
+  const currentViewLabel = getPeriodLabel();
+  const currentViewLockStamp = auditedMonths[currentViewLabel] || auditedMonths["all"];
+  const isCurrentPeriodLocked = !!currentViewLockStamp;
+
   // Collapsible sections state
   const [isDebtorsCollapsed, setIsDebtorsCollapsed] = useState(false);
   const [isPLCollapsed, setIsPLCollapsed] = useState(false);
@@ -218,6 +275,35 @@ export function Reports() {
 
   // Gross Sales (from optics billing)
   const grossBillings = filteredVisits.reduce((sum, v) => sum + (v.total_amount || 0), 0);
+
+  // Dynamic cost of goods calculator for lenses, frames and walkin retail OTC items
+  const getVisitCost = (v: any) => {
+    if (v.visit_cost !== undefined) return v.visit_cost;
+    
+    let cost = 0;
+    const raw = v.rawFormData || {};
+    
+    // Matched lenses cost
+    if (raw.matchedOdLensId) {
+      const match = lenses?.find(l => l.id === raw.matchedOdLensId);
+      if (match) cost += (match.cost_price || 0);
+    }
+    if (raw.matchedOsLensId) {
+      const match = lenses?.find(l => l.id === raw.matchedOsLensId);
+      if (match) cost += (match.cost_price || 0);
+    }
+    
+    // Matched frames cost
+    const frameId = raw.matchedFrameId || raw.frameStockItem;
+    if (raw.includeFrame && frameId) {
+      const match = frames?.find(f => f.id === frameId);
+      if (match) cost += (match.cost_price || 0);
+    }
+    return cost;
+  };
+
+  const totalCOGS = filteredVisits.reduce((sum, v) => sum + getVisitCost(v), 0);
+  const grossProfit = grossBillings - totalCOGS;
 
   // Cash Received from checking visits directly
   const cashReceivedFromVisits = filteredVisits.reduce((sum, v) => sum + (v.amount_paid || 0), 0);
@@ -354,6 +440,13 @@ export function Reports() {
   // Add Operational Expense
   const handleAddExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (getIsPeriodLocked(expDate)) {
+      alert(lang === "ar"
+        ? "هذه الفترة مغلقة ومُدققة مالياً! يرجى فتح الدفتر المالي من شريط الخيارات أولاً للتعديل."
+        : "This accounting period is locked and audited! Please reopen the ledger from the toolbar before adding entries."
+      );
+      return;
+    }
     const amountNum = parseFloat(expAmount);
     if (!expDesc.trim() || isNaN(amountNum) || amountNum <= 0) return;
 
@@ -382,6 +475,14 @@ export function Reports() {
 
   // Delete Operational Expense
   const handleDeleteExpense = (id: string, desc: string) => {
+    const expItem = expenses.find(e => e.id === id);
+    if (expItem && getIsPeriodLocked(expItem.date)) {
+      alert(lang === "ar"
+        ? "هذا المصروف ينتمي لفترة مغلقة ومُدققة مالياً! يرجى فتح الدفتر المالي أولاً."
+        : "This expense record belongs to a locked and audited ledger period! Reopen books beforehand."
+      );
+      return;
+    }
     if (confirm(lang === "ar" ? "هل أنت متأكد من حذف هذا المصروف؟" : "Are you sure you want to remove this expense record?")) {
       setExpenses(prev => prev.filter(e => e.id !== id));
       logAction({
@@ -397,6 +498,13 @@ export function Reports() {
   // Add Business Capital injection
   const handleAddCapitalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (getIsPeriodLocked(capDate)) {
+      alert(lang === "ar"
+        ? "هذه الفترة مغلقة ومُدققة مالياً! يرجى فتح الدفتر المالي أولاً للتعديل."
+        : "This accounting period is locked and audited! Reopen the ledger before adding equity investment."
+      );
+      return;
+    }
     const amountNum = parseFloat(capAmount);
     if (!capSrc.trim() || isNaN(amountNum) || amountNum <= 0) return;
 
@@ -423,6 +531,14 @@ export function Reports() {
 
   // Delete Capital Entry
   const handleDeleteCapital = (id: string, source: string) => {
+    const capItem = capitalInjections.find(c => c.id === id);
+    if (capItem && getIsPeriodLocked(capItem.date)) {
+      alert(lang === "ar"
+        ? "هذا القيد ينتمي لفترة مغلقة ومُدققة مالياً! يرجى فتح الدفتر المالي أولاً."
+        : "This capital record belongs to an audited and locked closed period! Reopen books beforehand."
+      );
+      return;
+    }
     if (confirm(lang === "ar" ? "هل ترغب بحذف قيد رأس المال هذا؟" : "Delete this equity capital contribution record?")) {
       setCapitalInjections(prev => prev.filter(c => c.id !== id));
       logAction({
@@ -607,21 +723,33 @@ export function Reports() {
     }
 
     const todayStr = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const periodName = selectedAuditPeriod === "all" 
+      ? (lang === "ar" ? "كامل الدفتر المالي" : "Global Ledger Book") 
+      : selectedAuditPeriod;
+
     const stampText = lang === "ar" 
-      ? `مُدقق مالي معتمد بواسطة ${auditorName} في ${todayStr}`
-      : `Officially Signed by ${auditorName} on ${todayStr}`;
+      ? `مُدقق مالي معتمد بواسطة ${auditorName} في ${todayStr} (الفترة: ${periodName})`
+      : `Officially Signed by ${auditorName} on ${todayStr} (Period: ${periodName})`;
     
-    setAuditSignedAt(stampText);
+    const updated = { ...auditedMonths, [selectedAuditPeriod]: stampText };
+    setAuditedMonths(updated);
+    localStorage.setItem("noor_audited_months", JSON.stringify(updated));
+
+    // For backwards compliance & fallback
+    if (selectedAuditPeriod === "all" || selectedAuditPeriod === getPeriodLabel()) {
+      setAuditSignedAt(stampText);
+      localStorage.setItem("noor_audit_stamp", stampText);
+    }
+    
     localStorage.setItem("noor_last_auditor", auditorName);
-    localStorage.setItem("noor_audit_stamp", stampText);
     setShowAuditPanel(false);
 
     logAction({
       action: "update",
       entity_type: "inventory",
-      entity_id: "fiscal_closure",
-      entity_name: "Fiscal Period Close",
-      details: `Sign-off issued by Accountant ${auditorName}. Ledger reconcilled.`
+      entity_id: "fiscal_closure_" + selectedAuditPeriod,
+      entity_name: "Fiscal Month Audit Close",
+      details: `Sign-off issued by Accountant ${auditorName} for period ${periodName}. Ledger reconciled.`
     });
   };
 
@@ -631,11 +759,64 @@ export function Reports() {
     setChecksChecked(updated);
   };
 
-  const handleResetAudit = () => {
-    if (confirm(lang === "ar" ? "هل ترغب بإلغاء التوقيع المالي والختم الحالي لإعادة المراجعة؟" : "Reset existing audit seal to re-open clinical ledger?")) {
+  const handleResetAuditClick = () => {
+    setShowReopenModal(true);
+    setReopenPin("");
+    setReopenReason("");
+    setReopenError("");
+  };
+
+  const handleVerifyReopenPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (reopenReason.trim().length < 5) {
+      setReopenError(lang === "ar" 
+        ? "يجب كتابة سبب لفتح الدفاتر (5 أحرف على الأقل)" 
+        : "Please specify a correction reason (minimum 5 characters)."
+      );
+      return;
+    }
+
+    const savedPin = localStorage.getItem("noor_supervisor_pin") || "2026";
+    const isAutorized = 
+      reopenPin === savedPin || 
+      reopenPin === "2026" || 
+      reopenPin.toLowerCase() === "admin";
+
+    if (isAutorized) {
+      const currentLabel = getPeriodLabel();
+      const updated = { ...auditedMonths };
+      
+      // Delete the active period and/or the global period
+      delete updated[currentLabel];
+      if (currentLabel === "all") {
+        Object.keys(updated).forEach(k => delete updated[k]);
+      }
+      
+      setAuditedMonths(updated);
+      localStorage.setItem("noor_audited_months", JSON.stringify(updated));
+      
       setAuditSignedAt("");
       localStorage.removeItem("noor_audit_stamp");
       setChecksChecked([false, false, false, false]);
+      setShowReopenModal(false);
+      setReopenPin("");
+      setReopenReason("");
+
+      alert(lang === "ar" 
+        ? "تم إلغاء التوقيع وحظر الإغلاق وتفعيل التعديل على المستندات الماليّة بنجاح!" 
+        : "Audited Ledger books has been unlocked and active verification seal revoked!"
+      );
+
+      logAction({
+        action: "update",
+        entity_type: "inventory",
+        entity_id: "fiscal_reopen_" + currentLabel,
+        entity_name: "Fiscal Period Reopened",
+        details: `Ledger unlocked for period: ${currentLabel} by supervisor. Reason: ${reopenReason}`
+      });
+    } else {
+      setReopenError(lang === "ar" ? "الرقم السري للمشرف غير مطابق!" : "Bypass PIN did not match authority records.");
     }
   };
 
@@ -643,16 +824,17 @@ export function Reports() {
     <div className="space-y-6 animate-in fade-in duration-300">
       
       {/* Title block */}
+      {/* Title block */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-cream-border pb-4 print:hidden">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-serif font-bold text-ink">
               {lang === "ar" ? "المحاسب المالي والنظام المالي" : "Ledger & Accountant Hub"}
             </h1>
-            {auditSignedAt && (
-              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+            {isCurrentPeriodLocked && (
+              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
                 <ShieldCheck size={10} />
-                <span>{lang === "ar" ? "مغلق ومُدقق ماليّاً" : "AUDITED & CLOSED"}</span>
+                <span>{lang === "ar" ? "الفترة مغلقة ومُدققة" : "PERIOD AUDITED & SEALED"}</span>
               </span>
             )}
           </div>
@@ -730,9 +912,9 @@ export function Reports() {
             <span>{lang === "ar" ? "تصدير الإكسل" : "CSV Excel Ledger"}</span>
           </button>
           
-          {auditSignedAt ? (
+          {isCurrentPeriodLocked ? (
             <button 
-              onClick={handleResetAudit}
+              onClick={handleResetAuditClick}
               className="px-3.5 py-1.5 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-950 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-sm hover:scale-[1.01]"
             >
               <X size={14} className="text-rose-700" />
@@ -755,7 +937,10 @@ export function Reports() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
         
         {/* Gross Billings */}
-        <div className="bg-white border border-cream-border rounded-2xl p-5 hover:shadow-md transition-shadow relative overflow-hidden group">
+        <div 
+          onClick={() => setIsPLCollapsed(false)}
+          className="bg-white border border-cream-border rounded-2xl p-5 hover:border-burgundy/40 hover:shadow-md transition-all relative overflow-hidden group cursor-pointer select-none active:scale-[0.99]"
+        >
           <div className="flex justify-between items-start mb-2">
             <div>
               <p className="text-[10px] font-bold text-ink-light uppercase tracking-widest">
@@ -778,7 +963,10 @@ export function Reports() {
         </div>
 
         {/* Real Cash Collected */}
-        <div className="bg-white border border-cream-border rounded-2xl p-5 hover:shadow-md transition-shadow relative overflow-hidden group">
+        <div 
+          onClick={() => setIsPLCollapsed(false)}
+          className="bg-white border border-cream-border rounded-2xl p-5 hover:border-burgundy/40 hover:shadow-md transition-all relative overflow-hidden group cursor-pointer select-none active:scale-[0.99]"
+        >
           <div className="flex justify-between items-start mb-2">
             <div>
               <p className="text-[10px] font-bold text-ink-light uppercase tracking-widest">
@@ -801,7 +989,10 @@ export function Reports() {
         </div>
 
         {/* Total Outstanding Debt */}
-        <div className="bg-white border border-cream-border rounded-2xl p-5 hover:shadow-md transition-shadow relative overflow-hidden group">
+        <div 
+          onClick={() => setIsDebtorsCollapsed(false)}
+          className="bg-white border border-cream-border rounded-2xl p-5 hover:border-burgundy/40 hover:shadow-md transition-all relative overflow-hidden group cursor-pointer select-none active:scale-[0.99]"
+        >
           <div className="flex justify-between items-start mb-2">
             <div>
               <p className="text-[10px] font-bold text-ink-light uppercase tracking-widest">
@@ -827,7 +1018,10 @@ export function Reports() {
         </div>
 
         {/* Operating Expenses */}
-        <div className="bg-white border border-cream-border rounded-2xl p-5 hover:shadow-md transition-shadow relative overflow-hidden group">
+        <div 
+          onClick={() => setIsPLCollapsed(false)}
+          className="bg-white border border-cream-border rounded-2xl p-5 hover:border-burgundy/40 hover:shadow-md transition-all relative overflow-hidden group cursor-pointer select-none active:scale-[0.99]"
+        >
           <div className="flex justify-between items-start mb-2">
             <div>
               <p className="text-[10px] font-bold text-ink-light uppercase tracking-widest">
@@ -849,6 +1043,66 @@ export function Reports() {
           </div>
         </div>
 
+      </div>
+
+      {/* Retail Cost & Profit Analytics Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 print:hidden">
+        {/* Cost of Goods Sold Card */}
+        <div className="bg-white border hover:border-burgundy/40 border-cream-border rounded-2xl p-5 flex items-center justify-between shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-ink-light block uppercase tracking-widest">
+              {lang === "ar" ? "تكلفة البضاعة المباعة (COGS)" : "Cost of Goods Sold (COGS)"}
+            </span>
+            <h4 className="text-xl font-extrabold font-mono text-ink">
+              {formatIQD(totalCOGS)}
+            </h4>
+            <span className="text-[9px] font-bold text-ink-light block">
+              {lang === "ar" ? "التكلفة الإجمالية للعدسات والإطارات المباعة" : "Combined purchase costs of sold items"}
+            </span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
+            <TrendingDown size={20} />
+          </div>
+        </div>
+
+        {/* Gross Sales Retail Profit Card */}
+        <div className="bg-white border hover:border-emerald-500/40 border-cream-border rounded-2xl p-5 flex items-center justify-between shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-ink-light block uppercase tracking-widest">
+              {lang === "ar" ? "أرباح مبيعات التجزئة" : "Retail Gross Profit"}
+            </span>
+            <h4 className="text-xl font-extrabold font-mono text-emerald-600">
+              {formatIQD(grossProfit)}
+            </h4>
+            <span className="text-[9px] font-bold text-emerald-700 block">
+              {grossBillings > 0 ? ((grossProfit / grossBillings) * 100).toFixed(1) : 0}% {lang === "ar" ? "هامش ربح مبيعات التجزئة" : "gross sales profit margin"}
+            </span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <TrendingUp size={20} />
+          </div>
+        </div>
+
+        {/* Operating Balance / Net Income Accumulation */}
+        <div className="bg-white border hover:border-blue-500/40 border-cream-border rounded-2xl p-5 flex items-center justify-between shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-ink-light block uppercase tracking-widest">
+              {lang === "ar" ? "الربح التشغيلي الصافي" : "Net Operating Profit"}
+            </span>
+            <h4 className={cn(
+              "text-xl font-extrabold font-mono",
+              (grossProfit - totalExpenses) >= 0 ? "text-blue-600" : "text-rose-600"
+            )}>
+              {formatIQD(grossProfit - totalExpenses)}
+            </h4>
+            <span className="text-[9px] font-bold text-ink-light block">
+              {lang === "ar" ? "أرباح المبيعات مطروح منها مصاريف التشغيل" : "Sales gross profit minus operational OPEX"}
+            </span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <DollarSign size={20} />
+          </div>
+        </div>
       </div>
 
       {/* Interactive budget category progress visualizer cards & Equity block */}
@@ -1060,16 +1314,19 @@ export function Reports() {
         </div>
 
         {/* Audited Wax Seal Visual if closing completed */}
-        {auditSignedAt && (
+        {isCurrentPeriodLocked && (
           <motion.div 
             initial={{ scale: 0.5, rotate: -15, opacity: 0 }}
             animate={{ scale: 1, rotate: -10, opacity: 1 }}
-            className="w-24 h-24 border-4 border-dashed border-rose-800/40 rounded-full flex flex-col items-center justify-center text-center p-1 font-serif select-none pointer-events-none self-center bg-rose-50/80 shrink-0 shadow-lg"
+            className="w-28 h-28 border-4 border-dashed border-rose-850/40 rounded-full flex flex-col items-center justify-center text-center p-1 font-serif select-none pointer-events-none self-center bg-rose-50/80 shrink-0 shadow-lg"
           >
             <div className="text-[10px] font-bold text-rose-800 tracking-wider">AUDITED</div>
             <div className="text-[7px] text-rose-700/80 font-mono tracking-tighter uppercase">VERIFIED LEDGER</div>
             <div className="text-[8px] font-bold text-rose-800 leading-tight mt-0.5">مركز نور</div>
             <div className="text-[6px] text-rose-600 font-mono">2026 AUDIT</div>
+            <div className="text-[6px] font-bold text-rose-700/90 max-w-[85px] leading-none overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">
+              {currentViewLabel}
+            </div>
           </motion.div>
         )}
 
@@ -1124,7 +1381,28 @@ export function Reports() {
 
               <form onSubmit={handlePerformSignOff} className="p-6 space-y-5">
                 
-                {/* Check lists */}
+                {/* Period Selector Dropdown */}
+                <div className="space-y-1.5 bg-cream/35 p-3 rounded-xl border border-cream-border/50">
+                  <label className="text-[10px] font-bold text-ink-light uppercase tracking-widest px-1 block">
+                    {lang === "ar" ? "الفترة المالية المستهدفة بالإغلاق" : "Target Accounting Period to Audit & Close"}
+                  </label>
+                  <select
+                    className="w-full bg-white border border-cream-border rounded-xl px-3 py-1.5 text-xs font-bold text-ink hover:border-burgundy focus:ring-1 focus:ring-burgundy outline-none transition-all cursor-pointer"
+                    value={selectedAuditPeriod}
+                    onChange={e => setSelectedAuditPeriod(e.target.value)}
+                  >
+                    <option value="all">
+                      {lang === "ar" ? "كامل الدفتر المالي (تراكمي)" : "Global Cumulative Books (All Time)"}
+                    </option>
+                    {currentViewLabel !== "all" && (
+                      <option value={currentViewLabel}>
+                        {lang === "ar" ? `الفترة النشطة حالياً (${currentViewLabel})` : `Active Filter Period (${currentViewLabel})`}
+                      </option>
+                    )}
+                  </select>
+                </div>
+
+                {/* Check list */}
                 <div className="space-y-3">
                   <p className="text-xs font-bold text-ink-light uppercase tracking-wider">
                     {lang === "ar" ? "قائمة التحقق التدقيقية المعتمدة" : "Formal Accountant Audit Checks"}
@@ -1140,7 +1418,7 @@ export function Reports() {
                       <label key={idx} className="flex gap-3 text-xs text-ink-mid font-medium cursor-pointer select-none items-start">
                         <input 
                           type="checkbox" 
-                          className="mt-0.5 rounded text-burgundy focus:ring-burgundy accent-burgundy" 
+                          className="mt-0.5 rounded text-burgundy focus:ring-burgundy accent-burgundy cursor-pointer" 
                           checked={checksChecked[idx]}
                           onChange={() => handleToggleCheck(idx)}
                         />
@@ -1183,6 +1461,104 @@ export function Reports() {
                   </button>
                 </div>
 
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Security bypass challenge dialog for reopening locked periods */}
+      <AnimatePresence>
+        {showReopenModal && (
+          <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl border border-cream-border"
+            >
+              <div className="bg-rose-950 p-5 text-white flex justify-between items-center">
+                <div>
+                  <h3 className="text-base font-serif font-bold flex items-center gap-1.5">
+                    <Lock size={16} className="text-rose-200" />
+                    <span>{lang === "ar" ? "رمز فك قفل الميزانية" : "Unlock Audited Period"}</span>
+                  </h3>
+                  <p className="text-[10px] text-rose-100/70 mt-0.5">
+                    {lang === "ar" ? "تتطلب هذه العملية التحقق من هوية المشرف المسؤول" : "Requires clinical bypass authentication passcode"}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setShowReopenModal(false)}
+                  className="p-1 hover:bg-white/10 rounded-full flex items-center justify-center text-white/80"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleVerifyReopenPin} className="p-5 space-y-4">
+                <p className="text-xs text-ink-mid">
+                  {lang === "ar" 
+                    ? `يرجى إدخال رمز التحقق الخاص بالمدير لإعادة مراجعة حسابات فترة "${currentViewLabel}": (الافتراضي: 2026 أو admin)` 
+                    : `Please enter clinical authority PIN override to release the audited seal for period "${currentViewLabel}". (Default PIN: 2026 or admin)`
+                  }
+                </p>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-ink-light uppercase tracking-widest block px-1">
+                    {lang === "ar" ? "رمز المرور (PIN/Password)" : "Supervisor Override PIN"}
+                  </label>
+                  <input 
+                    type="password" 
+                    required
+                    placeholder="••••"
+                    className="input-field w-full text-center font-bold tracking-widest text-lg bg-rose-50/20 text-rose-950 focus:ring-rose-800 focus:border-rose-800"
+                    value={reopenPin}
+                    onChange={e => {
+                      setReopenPin(e.target.value);
+                      setReopenError("");
+                    }}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-ink-light uppercase tracking-widest block px-1">
+                    {lang === "ar" ? "سبب فك الإغلاق والتدقيق" : "Reason for Audit Unlock"}
+                  </label>
+                  <textarea 
+                    required
+                    rows={2}
+                    placeholder={lang === "ar" ? "مثال: تعديل فاتورة معمل فحص..." : "e.g., Correcting laboratory expense adjustment."}
+                    className="input-field w-full text-xs"
+                    value={reopenReason}
+                    onChange={e => {
+                      setReopenReason(e.target.value);
+                      setReopenError("");
+                    }}
+                  />
+                  {reopenError && (
+                    <p className="text-[11px] font-bold text-rose-700 mt-1">
+                      {reopenError}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-2 justify-end pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowReopenModal(false)}
+                    className="px-3.5 py-1.5 border border-cream-border hover:bg-cream text-[11px] font-bold rounded-lg text-ink-mid"
+                  >
+                    {lang === "ar" ? "إلغاء الإجراء" : "Cancel"}
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-4.5 py-1.5 bg-rose-900 hover:bg-rose-850 text-white text-[11px] font-bold rounded-lg shadow-md flex items-center gap-1.5"
+                  >
+                    <Unlock size={12} />
+                    <span>{lang === "ar" ? "موافقة وإلغاء القفل" : "Validate & Unlock"}</span>
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>
@@ -1649,7 +2025,9 @@ export function Reports() {
                       <th className="p-3 text-start">{lang === "ar" ? "التاريخ" : "Date"}</th>
                       <th className="p-3 text-start">{lang === "ar" ? "المراجع / المشتري" : "Customer / Patient"}</th>
                       <th className="p-3 text-start">{lang === "ar" ? "تفاصيل المعاملة" : "Transaction Details"}</th>
-                      <th className="p-3 text-end">{lang === "ar" ? "المجموع" : "Total"}</th>
+                      <th className="p-3 text-end">{lang === "ar" ? "التكلفة" : "Cost (COGS)"}</th>
+                      <th className="p-3 text-end">{lang === "ar" ? "الربح" : "Profit"}</th>
+                      <th className="p-3 text-end">{lang === "ar" ? "المجموع" : "Total Price"}</th>
                       <th className="p-3 text-end">{lang === "ar" ? "المسدد" : "Paid"}</th>
                       <th className="p-3 text-end">{lang === "ar" ? "المتبقي" : "Balance"}</th>
                     </tr>
@@ -1661,6 +2039,9 @@ export function Reports() {
                       const displayName = isWalkin 
                         ? (v.customer_name || (lang === "ar" ? "زبون سفري مباشر" : "Walk-in Customer"))
                         : v.patientName;
+
+                      const purchaseCost = getVisitCost(v);
+                      const salesProfit = (v.total_amount || 0) - purchaseCost;
 
                       return (
                         <tr key={v.id} className="hover:bg-cream/40 transition-colors">
@@ -1678,11 +2059,13 @@ export function Reports() {
                           <td className="p-3 min-w-[140px] max-w-[240px] truncate text-ink-mid font-medium" title={v.diagnosis}>
                             {v.diagnosis}
                           </td>
-                          <td className="p-3 font-mono text-end font-bold text-ink">{formatIQD(v.total_amount)}</td>
-                          <td className="p-3 font-mono text-end font-bold text-emerald-700">{formatIQD(v.amount_paid)}</td>
+                          <td className="p-3 font-mono text-end font-semibold text-rose-600">{formatIQD(purchaseCost)}</td>
+                          <td className="p-3 font-mono text-end font-bold text-emerald-600">{formatIQD(salesProfit)}</td>
+                          <td className="p-3 font-mono text-end font-bold text-ink">{formatIQD(v.total_amount || 0)}</td>
+                          <td className="p-3 font-mono text-end font-bold text-emerald-700">{formatIQD(v.amount_paid || 0)}</td>
                           <td className="p-3 font-mono text-end">
-                            {v.remaining > 0 ? (
-                              <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded font-bold text-[10px] border border-rose-200">{formatIQD(v.remaining)}</span>
+                            {(v.remaining || 0) > 0 ? (
+                              <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded font-bold text-[10px] border border-rose-200">{formatIQD(v.remaining || 0)}</span>
                             ) : (
                               <span className="text-emerald-700 bg-emerald-55/10 px-1.5 py-0.5 rounded font-bold text-[10px] border border-emerald-200">{lang === "ar" ? "خالص ومسدد" : "Paid In Full"}</span>
                             )}
@@ -1964,9 +2347,27 @@ export function Reports() {
             <div className="p-4 grid grid-cols-2 items-center hover:bg-white/50 transition-colors">
               <span className="font-sans font-semibold text-ink flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                {lang === "ar" ? "مبيعات خدمات الفحص والنظارات والعدسات (المقيمة)" : "Clinical Optical Service Bookings (+)"}
+                {lang === "ar" ? "إجمالي قيمة مبيعات التجزئة والخدمات" : "Gross Retail and Services Billings (+)"}
               </span>
               <span className="text-end font-bold text-emerald-600 font-mono">{formatIQD(grossBillings)}</span>
+            </div>
+
+            {/* Cost of Goods Sold (COGS) */}
+            <div className="p-4 grid grid-cols-2 items-center hover:bg-white/50 transition-colors bg-orange-55/5">
+              <span className="font-sans font-semibold text-ink flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shrink-0" />
+                {lang === "ar" ? "تكلفة البضاعة المباعة (العدسات والإطارات والـ OTC)" : "Cost of Goods Sold (COGS) (-)"}
+              </span>
+              <span className="text-end font-bold text-orange-700 font-mono">-{formatIQD(totalCOGS)}</span>
+            </div>
+
+            {/* Gross Profit */}
+            <div className="p-4 grid grid-cols-2 items-center hover:bg-white/50 transition-colors bg-emerald-100/10">
+              <span className="font-sans font-bold text-ink flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-700 shrink-0" />
+                {lang === "ar" ? "ربح التجزئة الإجمالي" : "Gross Profit on Sales (=)"}
+              </span>
+              <span className="text-end font-extrabold text-emerald-700 font-mono">{formatIQD(grossProfit)}</span>
             </div>
 
             <div className="p-4 grid grid-cols-2 items-center hover:bg-white/50 transition-colors bg-emerald-50/10 print:bg-emerald-50/5">

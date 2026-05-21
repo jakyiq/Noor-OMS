@@ -214,26 +214,11 @@ export function Inventory() {
     }
   }, [inventoryTrigger]);
 
-  // Quick Sale (POS Cart) States
-  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
-  const [quantitiesToSell, setQuantitiesToSell] = useState<Record<string, number>>({});
-  const [customerName, setCustomerName] = useState("");
-  const [notes, setNotes] = useState("");
-  const [paidOverride, setPaidOverride] = useState("");
-  const [saleResult, setSaleResult] = useState<{
-    success: boolean;
-    customer: string;
-    total: number;
-    paid: number;
-    change: number;
-    itemsCount: number;
-  } | null>(null);
-
   // Add & Edit Product Modal States
   const [isAddEditOpen, setIsAddEditOpen] = useState(false);
   
   // Prevent scroll when edit/add modal is active
-  useScrollLock(isAddEditOpen);
+  useScrollLock(isAddEditOpen || isSupplierModalOpen || isOrderModalOpen);
 
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [formData, setFormData] = useState({
@@ -243,6 +228,7 @@ export function Inventory() {
     stock_level: 10,
     reorder_point: 2,
     unit_price: 5000,
+    cost_price: 3000,
   });
 
   const combinedItems = useMemo(() => {
@@ -308,63 +294,6 @@ export function Inventory() {
     return combinedItems.filter(i => i.stock_level <= i.reorder_point);
   }, [combinedItems]);
 
-  // Cart operations helpers
-  const toggleSelectItem = (id: string) => {
-    setSelectedItemIds(prev => {
-      const isSelected = prev.includes(id);
-      if (isSelected) {
-        return prev.filter(itemId => itemId !== id);
-      } else {
-        setQuantitiesToSell(q => ({ ...q, [id]: 1 }));
-        return [...prev, id];
-      }
-    });
-  };
-
-  const isAllFilteredSelected = filteredItems.length > 0 && filteredItems.every(i => selectedItemIds.includes(i.id));
-  
-  const toggleSelectAllFiltered = () => {
-    if (isAllFilteredSelected) {
-      setSelectedItemIds(prev => prev.filter(id => !filteredItems.some(f => f.id === id)));
-    } else {
-      const newIds = [...selectedItemIds];
-      filteredItems.forEach(f => {
-        if (!newIds.includes(f.id)) {
-          newIds.push(f.id);
-          setQuantitiesToSell(q => ({ ...q, [f.id]: q[f.id] || 1 }));
-        }
-      });
-      setSelectedItemIds(newIds);
-    }
-  };
-
-  const updateQuantityToSell = (id: string, delta: number) => {
-    const item = combinedItems.find(i => i.id === id);
-    if (!item) return;
-    setQuantitiesToSell(q => {
-      const current = q[id] || 1;
-      const next = Math.max(1, current + delta);
-      return { ...q, [id]: next };
-    });
-  };
-
-  // Compute Checkout totals
-  const selectedCartItems = useMemo(() => {
-    return selectedItemIds
-      .map(id => {
-        const item = combinedItems.find(i => i.id === id);
-        const qty = quantitiesToSell[id] || 1;
-        return item ? { ...item, qty, subtotal: item.unit_price * qty } : null;
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [selectedItemIds, combinedItems, quantitiesToSell]);
-
-  const cartTotalAmount = useMemo(() => {
-    return selectedCartItems.reduce((sum, item) => sum + item.subtotal, 0);
-  }, [selectedCartItems]);
-
-  const defaultPaidAmount = cartTotalAmount;
-
   // Render product categories nicely
   const getCategoryLabel = (cat: string) => {
     switch (cat) {
@@ -377,134 +306,6 @@ export function Inventory() {
     }
   };
 
-  // Handle Quick Retail Sale confirmation
-  const handleRegisterQuickSale = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedCartItems.length === 0) return;
-
-    const payerName = customerName.trim() || (lang === "ar" ? "زبون سفري مباشر" : "Walk-in Retail Customer");
-    const actualPaid = paidOverride !== "" ? parseFloat(paidOverride) : cartTotalAmount;
-    
-    if (isNaN(actualPaid) || actualPaid < 0) {
-      alert(lang === "ar" ? "الرجاء كيتان قيمة الدفع بالشكل الصحيح" : "Please enter a valid paid amount");
-      return;
-    }
-
-    const remainingAmount = Math.max(0, cartTotalAmount - actualPaid);
-
-    // 1. Decrement inventory stock levels
-    setItems(prevItems => prevItems.map(item => {
-      const soldItem = selectedCartItems.find(s => s.id === item.id);
-      if (soldItem) {
-        return {
-          ...item,
-          stock_level: Math.max(0, item.stock_level - soldItem.qty),
-          updated_at: new Date().toISOString().split("T")[0]
-        };
-      }
-      return item;
-    }));
-
-    // 1b. Update actual professional lenses database in ClinicContext
-    setLenses((prevLenses: import("../types").LensItem[]) => prevLenses.map(l => {
-      const sold = selectedCartItems.find(c => c.id === `lens_${l.id}`);
-      if (sold) {
-        return {
-          ...l,
-          quantity: Math.max(0, l.quantity - sold.qty)
-        };
-      }
-      return l;
-    }));
-
-    // 1c. Update actual professional frames database in ClinicContext
-    setFrames((prevFrames: import("../types").FrameItem[]) => prevFrames.map(f => {
-      const sold = selectedCartItems.find(c => c.id === `frame_${f.id}`);
-      if (sold) {
-        return {
-          ...f,
-          quantity: Math.max(0, f.quantity - sold.qty)
-        };
-      }
-      return f;
-    }));
-
-    // 2. Map sold items descriptive string
-    const itemsDesc = selectedCartItems.map(s => `${s.qty}x ${s.name}`).join(", ");
-    const diagnosisStr = lang === "ar"
-      ? `بيع مباشر بالتجزئة: ${selectedCartItems.map(s => `${s.name} (عدد ${s.qty})`).join("، ")}`
-      : `Retail Sale: ${itemsDesc}`;
-
-    // 3. Create a unified visit model integration
-    const newVisitId = "v_retail_" + Math.random().toString(36).substring(7);
-    const walkinVisit = {
-      id: newVisitId,
-      patient_id: "walkin_retail",
-      customer_name: payerName,
-      visit_date: new Date().toISOString().split("T")[0],
-      diagnosis: diagnosisStr,
-      total_amount: cartTotalAmount,
-      amount_paid: actualPaid,
-      remaining: remainingAmount,
-    };
-
-    // 4. Update core patient record state so it rolls into Reports/Finances instantly
-    setPatients((prevPatients: any[]) => {
-      // Find if we already have the global Walk-In Retail container
-      const retailIndex = prevPatients.findIndex(p => p.id === "walkin_retail");
-      if (retailIndex !== -1) {
-        const existing = prevPatients[retailIndex];
-        const updatedVisits = [walkinVisit, ...(existing.visits || [])];
-        return prevPatients.map((p, idx) => idx === retailIndex ? {
-          ...p,
-          last_visit: walkinVisit.visit_date,
-          outstanding: (p.outstanding || 0) + remainingAmount,
-          visits: updatedVisits
-        } : p);
-      } else {
-        // Bootstrap Walk-in sales aggregator patient
-        const newRetailCustomer = {
-          id: "walkin_retail",
-          full_name: lang === "ar" ? "زبائن البيع المباشر (سفري)" : "Walk-in Retail Customers",
-          phone: "07XXXXXXXXX",
-          age: 30,
-          gender: "male",
-          last_visit: walkinVisit.visit_date,
-          outstanding: remainingAmount,
-          updated_at: walkinVisit.visit_date,
-          outstanding_remaining: remainingAmount,
-          visits: [walkinVisit]
-        };
-        return [newRetailCustomer, ...prevPatients];
-      }
-    });
-
-    // 5. Audit log tracking
-    logAction({
-      action: "create",
-      entity_type: "inventory",
-      entity_id: newVisitId,
-      entity_name: "Quick Direct Sale",
-      details: `Direct Sell of ${itemsDesc} to ${payerName}. Total: ${formatIQD(cartTotalAmount)}. Paid: ${formatIQD(actualPaid)}`
-    });
-
-    // State presentation setup
-    setSaleResult({
-      success: true,
-      customer: payerName,
-      total: cartTotalAmount,
-      paid: actualPaid,
-      change: Math.max(0, actualPaid - cartTotalAmount),
-      itemsCount: selectedCartItems.reduce((acc, i) => acc + i.qty, 0)
-    });
-
-    // Reset checkout forms
-    setSelectedItemIds([]);
-    setCustomerName("");
-    setNotes("");
-    setPaidOverride("");
-  };
-
   // Add & Edit operational mechanics
   const handleOpenAdd = () => {
     setEditingItem(null);
@@ -514,7 +315,8 @@ export function Inventory() {
       sku: "AC-" + Math.floor(100 + Math.random() * 900),
       stock_level: 10,
       reorder_point: 2,
-      unit_price: 5000
+      unit_price: 5000,
+      cost_price: 3000
     });
     setIsAddEditOpen(true);
   };
@@ -527,7 +329,8 @@ export function Inventory() {
       sku: item.sku || "AC-" + Math.floor(100 + Math.random() * 900),
       stock_level: item.stock_level,
       reorder_point: item.reorder_point,
-      unit_price: item.unit_price
+      unit_price: item.unit_price,
+      cost_price: item.cost_price || 0
     });
     setIsAddEditOpen(true);
   };
@@ -535,7 +338,6 @@ export function Inventory() {
   const handleDeleteItem = (id: string) => {
     if (confirm(lang === "ar" ? "هل أنت متأكد من حذف هذا المنتج نهائياً من المخزن؟" : "Are you sure you want to delete this product from inventory?")) {
       setItems(prev => prev.filter(i => i.id !== id));
-      setSelectedItemIds(prev => prev.filter(i => i !== id));
       logAction({
         action: "delete",
         entity_type: "inventory",
@@ -563,6 +365,7 @@ export function Inventory() {
         stock_level: Number(formData.stock_level),
         reorder_point: Number(formData.reorder_point),
         unit_price: Number(formData.unit_price),
+        cost_price: Number(formData.cost_price || 0),
         updated_at: new Date().toISOString().split("T")[0]
       } : i));
 
@@ -583,6 +386,7 @@ export function Inventory() {
         stock_level: Number(formData.stock_level),
         reorder_point: Number(formData.reorder_point),
         unit_price: Number(formData.unit_price),
+        cost_price: Number(formData.cost_price || 0),
         updated_at: new Date().toISOString().split("T")[0]
       };
 
@@ -761,6 +565,7 @@ export function Inventory() {
         stock_level: Number(orderFormData.quantity),
         reorder_point: 2,
         unit_price: Math.floor(Number(orderFormData.unitCost) * 1.35), // automatic 35% margin markup
+        cost_price: Number(orderFormData.unitCost), // Save the cost price
         updated_at: new Date().toISOString().split("T")[0]
       };
       setItems(prev => [newOtcProduct, ...prev]);
@@ -827,51 +632,15 @@ export function Inventory() {
 
   return (
     <div className="space-y-6">
-      {/* Receipts Success Alerts Banner */}
-      {saleResult && (
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-6 relative overflow-hidden shadow-md flex flex-col md:flex-row items-center justify-between gap-6"
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 -mr-12 -mt-12 rounded-full blur-xl" />
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-600/20">
-              <Check size={24} strokeWidth={3} />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-emerald-900">
-                {lang === "ar" ? "تم تسجيل عملية البيع السريع بنجاح!" : "Quick Sale Completed Successfully!"}
-              </h3>
-              <p className="text-xs text-emerald-700 font-medium mt-1">
-                {lang === "ar" 
-                  ? `العضو: ${saleResult.customer} · تم بيع ${saleResult.itemsCount} منتج · القيمة الكلية: ${formatIQD(saleResult.total)} ` 
-                  : `Customer: ${saleResult.customer} · Sold ${saleResult.itemsCount} items · Total Value: ${formatIQD(saleResult.total)}`}
-              </p>
-              {saleResult.paid < saleResult.total && (
-                <span className="inline-block mt-2 bg-amber-100 text-amber-800 text-[10px] uppercase tracking-widest px-2.5 py-0.5 rounded font-bold border border-amber-200">
-                  {lang === "ar" ? "قيد مالي (دين مفروض)" : "Outstanding Debt Created"}
-                </span>
-              )}
-            </div>
-          </div>
-          <button 
-            onClick={() => setSaleResult(null)}
-            className="px-5 py-2.5 hover:bg-emerald-100/50 text-emerald-800 font-bold text-xs uppercase tracking-widest rounded-xl transition-all border border-emerald-200 bg-white"
-          >
-            {lang === "ar" ? "تأكيد" : "Dismiss"}
-          </button>
-        </motion.div>
-      )}
 
       {/* Header Area */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold text-ink mb-1">
-            {lang === "ar" ? "بيع سريع" : "Inventory"}
+            {lang === "ar" ? "المخزن" : "Inventory"}
           </h1>
           <p className="text-xs text-ink-light font-medium uppercase tracking-widest flex items-center gap-2">
-            {lang === "ar" ? "تسجيل المبيعات المباشرة للمواد والرفوف والنظارات الجاهزة" : "DIRECT RETAIL SALES & SHELF ACCESSORIES"} <span className="w-1 h-1 bg-cream-border rounded-full" /> {combinedItems.length} {lang === "ar" ? "منتج مسجل" : "REGISTERED ITEMS"}
+            {lang === "ar" ? "إدارة وتتبع مستويات المخازن والطلبيات مع المجهزين المعتمدين" : "STOCK LEVELS, CATALOG ITEMS & SUPPLIER ORDERS"} <span className="w-1 h-1 bg-cream-border rounded-full" /> {combinedItems.length} {lang === "ar" ? "منتج مسجل" : "REGISTERED ITEMS"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -886,7 +655,7 @@ export function Inventory() {
       </div>
 
       {/* Low Stock Alerts Banner */}
-      {lowStockItems.length > 0 && !saleResult && (
+      {lowStockItems.length > 0 && (
         <motion.div 
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
@@ -899,8 +668,8 @@ export function Inventory() {
             <h3 className="text-sm font-bold text-rose-900 uppercase tracking-tight">{lang === 'ar' ? 'تنبيه: مخزون منخفض' : 'Critical Stock Alert'}</h3>
             <p className="text-xs text-rose-700 font-medium leading-relaxed">
               {lang === 'ar' 
-                ? `هناك ${lowStockItems.length} أصناف وصلت إلى مستوى إعادة الطلب أو أقل. يرجى مراجعة الطلبات.` 
-                : `There are ${lowStockItems.length} items that have reached or dropped below their reorder point.`}
+                ? `هناك ${lowStockItems.length} أصناف وصلت إلى مستوى إعادة الطلب أو أقل. انقر فوق أي صنف لتحديده ومراجعته بالجدول.` 
+                : `There are ${lowStockItems.length} items that have reached or dropped below their reorder point. Click any item icon to locate and edit.`}
             </p>
           </div>
           <div className="flex gap-1.5 items-center py-1">
@@ -908,9 +677,11 @@ export function Inventory() {
               const isLens = item.id.startsWith("lens_") || item.category === "lens";
               const isFrame = item.id.startsWith("frame_") || item.category === "frame";
               return (
-                <div 
+                <button 
                   key={item.id} 
-                  className="h-8 w-8 rounded-full ring-2 ring-rose-300 bg-white flex items-center justify-center text-rose-600 shadow-sm relative group cursor-help shrink-0"
+                  type="button"
+                  onClick={() => handleSelectLowStockItem(item)}
+                  className="h-8 w-8 rounded-full ring-2 ring-rose-300 bg-white hover:bg-rose-100 flex items-center justify-center text-rose-600 shadow-sm relative group cursor-pointer hover:scale-110 active:scale-95 transition-all shrink-0"
                   title={item.name}
                 >
                   {isLens ? (
@@ -920,11 +691,11 @@ export function Inventory() {
                   ) : (
                     <Package size={13} strokeWidth={2.5} />
                   )}
-                </div>
+                </button>
               );
             })}
             {lowStockItems.length > 3 && (
-              <div className="h-8 w-8 rounded-full ring-2 ring-rose-300 bg-rose-600 flex items-center justify-center text-[10px] font-extrabold text-white shadow-sm shrink-0">
+              <div className="h-8 w-8 rounded-full ring-2 ring-rose-300 bg-rose-600 flex items-center justify-center text-[10px] font-extrabold text-white shadow-sm shrink-0 animate-pulse">
                 +{lowStockItems.length - 3}
               </div>
             )}
@@ -976,7 +747,7 @@ export function Inventory() {
             activeTab === "items" ? "text-burgundy" : "text-ink-light hover:text-ink-mid"
           )}
         >
-          {lang === "ar" ? "المخزون والبيع المباشر" : "Inventory"}
+          {lang === "ar" ? "المخزن والمستودع" : "Inventory Stock"}
           {activeTab === "items" && <motion.div layoutId="tab-underline" className="absolute bottom-0 inset-x-0 h-0.5 bg-burgundy" />}
         </button>
         <button 
@@ -991,17 +762,9 @@ export function Inventory() {
         </button>
       </div>
 
-      {/* Layout Grid that auto-shifts when elements are selected in checkout POS mode */}
-      <div className={cn(
-        "grid grid-cols-1 gap-6 items-start transition-all duration-300",
-        selectedItemIds.length > 0 && activeTab === "items" ? "xl:grid-cols-12" : "grid-cols-1"
-      )}>
-        
-        {/* Main Content Column */}
-        <div className={cn(
-          "space-y-4 transition-all duration-300",
-          selectedItemIds.length > 0 && activeTab === "items" ? "xl:col-span-8" : "w-full"
-        )}>
+      {/* Main Content Area */}
+      <div className="w-full">
+        <div className="space-y-4">
           <AnimatePresence mode="wait">
             {activeTab === "items" ? (
               <motion.div 
@@ -1056,16 +819,6 @@ export function Inventory() {
                   </div>
                   
                   <div className="flex gap-2 w-full md:w-auto">
-                    {selectedItemIds.length > 0 && (
-                      <button 
-                        onClick={() => setSelectedItemIds([])}
-                        className="p-3 text-rose-600 bg-white border-2 border-cream-border hover:border-rose-200 hover:bg-rose-50 rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-1 min-w-[120px]"
-                      >
-                        <X size={14} />
-                        <span>{lang === "ar" ? "إلغاء التحديد" : "Clear Checked"}</span>
-                      </button>
-                    )}
-
                     <select 
                       value={categoryFilter}
                       onChange={(e) => setCategoryFilter(e.target.value)}
@@ -1096,14 +849,14 @@ export function Inventory() {
                   </div>
                 </div>
 
-                {/* Subtitle instructions for direct sell selection */}
+                {/* Subtitle instructions for stock management */}
                 <div className="bg-cream/40 border border-cream-border rounded-xl p-3 flex items-center justify-between text-xs text-ink-light font-medium">
                   <div className="flex items-center gap-2">
                     <Info size={14} className="text-burgundy" />
                     <span>
                       {lang === "ar" 
-                        ? "سجل مبيعات سريعة للمواد بالنقر مباشرة على المنتج لإضافته أو زيادة كميته بالسلّة مباشرة." 
-                        : "Sell products instantly by clicking any item card to add it to the cart or increment its quantity."}
+                        ? "انقر فوق بطاقة أي منتج مخصص لتعديل مستويات المخزون والحد الأدنى لإعادة الطلب وتحديث الأسعار." 
+                        : "Click any custom product card to modify stock levels, reorder thresholds, or update pricing details."}
                     </span>
                   </div>
                 </div>
@@ -1112,8 +865,6 @@ export function Inventory() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                   {filteredItems.map((item, idx) => {
                     const isLowStock = item.stock_level <= item.reorder_point;
-                    const isChecked = selectedItemIds.includes(item.id);
-                    const qtyInCart = isChecked ? (quantitiesToSell[item.id] || 1) : 0;
                     
                     return (
                       <motion.div 
@@ -1122,19 +873,16 @@ export function Inventory() {
                         transition={{ delay: idx * 0.02 }}
                         key={item.id} 
                         className={cn(
-                          "bg-white border-2 rounded-2xl p-5 flex flex-col justify-between hover:border-burgundy/40 hover:shadow-md transition-all group relative cursor-pointer select-none",
+                          "bg-white border-2 rounded-2xl p-5 flex flex-col justify-between hover:border-burgundy/40 hover:shadow-md transition-all group relative select-none",
                           isLowStock ? "border-rose-100 bg-rose-50/[0.02]" : "border-cream-border",
-                          isChecked && "border-burgundy/60 bg-burgundy/[0.01] shadow-sm shadow-burgundy/5"
+                          !(item.id.startsWith("lens_") || item.id.startsWith("frame_")) ? "cursor-pointer" : ""
                         )}
-                        onClick={() => toggleSelectItem(item.id)}
+                        onClick={() => {
+                          if (!(item.id.startsWith("lens_") || item.id.startsWith("frame_"))) {
+                            handleOpenEdit(item);
+                          }
+                        }}
                       >
-                        {/* Selected Indicator Badge in card corner */}
-                        {isChecked && (
-                          <div className="absolute top-3 right-3 bg-burgundy text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow">
-                            <ShoppingCart size={10} />
-                            <span>{qtyInCart} {lang === "ar" ? "بالسلة" : "In Cart"}</span>
-                          </div>
-                        )}
 
                         <div className="space-y-3">
                           {/* Top row: Category Pill & Stock Status */}
@@ -1195,20 +943,6 @@ export function Inventory() {
                                 {item.id.startsWith("lens_") ? (lang === "ar" ? "كتالوج عدسات" : "Lenses") : (lang === "ar" ? "كتالوج إطارات" : "Frames")}
                               </span>
                             )}
-
-                            {/* Direct Add Button */}
-                            <button 
-                              onClick={() => toggleSelectItem(item.id)}
-                              className={cn(
-                                "p-1.5 px-3 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1 h-8",
-                                isChecked 
-                                  ? "bg-emerald-600 text-white hover:bg-emerald-700" 
-                                  : "bg-burgundy text-white hover:bg-burgundy-light shadow-burgundy/10"
-                              )}
-                            >
-                              <Plus size={13} strokeWidth={2.5} />
-                              <span>{lang === "ar" ? "إضافة" : "Add"}</span>
-                            </button>
                           </div>
                         </div>
                       </motion.div>
@@ -1389,143 +1123,6 @@ export function Inventory() {
             )}
           </AnimatePresence>
         </div>
-
-        {/* Checkout POS Cart Column (Sliding in beautifully) */}
-        {selectedItemIds.length > 0 && activeTab === "items" && (
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="xl:col-span-4 card p-5 bg-white border-2 border-burgundy/20 shadow-xl overflow-hidden relative sticky top-6 text-start space-y-5"
-          >
-            <div className="flex items-center justify-between border-b border-cream-border pb-3">
-              <div className="flex items-center gap-2 text-burgundy">
-                <ShoppingCart size={18} />
-                <h3 className="font-serif font-bold text-lg">
-                  {lang === "ar" ? "فاتورة بيع سريع" : "Quick Retail Sale"}
-                </h3>
-              </div>
-              <button 
-                onClick={() => setSelectedItemIds([])}
-                className="p-1 border border-cream-border hover:bg-rose-50 hover:text-rose-600 rounded-lg text-ink-light transition-colors"
-                title={lang === "ar" ? "أغلق" : "Close"}
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            {/* Selected Items details in cart */}
-            <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-              {selectedCartItems.map(item => (
-                <div key={item.id} className="bg-cream/40 rounded-xl p-3 border border-cream-border/50 text-xs text-ink-mid flex flex-col gap-2">
-                  <div className="flex justify-between items-start">
-                    <span className="font-bold flex items-center gap-1">
-                      <Package size={13} className="text-burgundy/80" />
-                      {item.name}
-                    </span>
-                    <span className="font-mono text-ink font-bold">{formatIQD(item.subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[10px] text-ink-light">
-                    <span>{formatIQD(item.unit_price)} / {lang === "ar" ? "الحبة" : "unit"}</span>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <button 
-                        type="button" 
-                        onClick={() => updateQuantityToSell(item.id, -1)}
-                        className="w-5 h-5 rounded bg-cream hover:bg-cream-dark transition-all flex items-center justify-center font-bold"
-                      >
-                        -
-                      </button>
-                      <span className="font-bold text-ink text-xs font-mono w-4 text-center">{item.qty}</span>
-                      <button 
-                        type="button" 
-                        onClick={() => updateQuantityToSell(item.id, 1)}
-                        className="w-5 h-5 rounded bg-cream hover:bg-cream-dark transition-all flex items-center justify-center font-bold"
-                        disabled={item.qty >= item.stock_level}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Client input & payment configurations */}
-            <form onSubmit={handleRegisterQuickSale} className="space-y-4 pt-2 border-t border-cream-border/60">
-              
-              {/* Optional custom customer name */}
-              <div>
-                <label className="text-[10px] sm:text-[10px] font-bold text-ink-light block uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <User size={10} />
-                  <span>{lang === "ar" ? "اسم الزبون (اختياري)" : "Customer Name (Optional)"}</span>
-                </label>
-                <input 
-                  type="text" 
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder={lang === "ar" ? "زبون سفري مباشر" : "Walk-in Retail Customer"}
-                  className="w-full bg-cream/40 border-2 border-cream-border/95 px-3 py-2 rounded-xl text-xs outline-none focus:border-burgundy tracking-wide"
-                />
-              </div>
-
-              {/* Total Summary */}
-              <div className="bg-burgundy/[0.03] rounded-xl p-4 border border-burgundy/10 space-y-1.5 font-sans">
-                <div className="flex justify-between text-xs text-ink-light">
-                  <span>{lang === "ar" ? "الإجمالي الأصلي" : "Gross Total"}</span>
-                  <span className="font-mono">{formatIQD(cartTotalAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm text-ink font-bold border-t border-cream-border pt-1.5 mt-1.5">
-                  <span className="text-burgundy font-serif font-black">{lang === "ar" ? "المبلغ المطلوب" : "Grand Total"}</span>
-                  <span className="font-mono text-burgundy">{formatIQD(cartTotalAmount)}</span>
-                </div>
-              </div>
-
-              {/* Paid override for partial payments/debts */}
-              <div>
-                <label className="text-[10px] font-bold text-ink-light block uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    <CreditCard size={10} />
-                    <span>{lang === "ar" ? "المبلغ المدفوع فعلياً" : "Actual Amount Paid"}</span>
-                  </div>
-                  <span className="text-[9px] text-burgundy font-extrabold font-mono hover:underline cursor-pointer" onClick={() => setPaidOverride("")}>
-                    {lang === "ar" ? "كامل المبلغ" : "Reset full"}
-                  </span>
-                </label>
-                <div className="relative">
-                  <input 
-                    type="number" 
-                    value={paidOverride}
-                    onChange={(e) => setPaidOverride(e.target.value)}
-                    placeholder={cartTotalAmount.toString()}
-                    className="w-full bg-cream/40 border-2 border-cream-border/95 px-3 py-2 rounded-xl text-xs outline-none focus:border-burgundy font-mono tracking-wide"
-                  />
-                  <span className="absolute end-3 top-1/2 -translate-y-1/2 font-bold text-[9px] text-ink-light uppercase">IQD</span>
-                </div>
-              </div>
-
-              {/* Outstanding feedback indicator */}
-              {paidOverride !== "" && parseFloat(paidOverride) < cartTotalAmount && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[10px] text-amber-800 flex items-start gap-2 leading-relaxed">
-                  <Info size={12} className="shrink-0 mt-0.5" />
-                  <span>
-                    {lang === "ar" 
-                      ? `سيتم معاملة الباقي بقيمة ${formatIQD(Math.max(0, cartTotalAmount - parseFloat(paidOverride)))} كديون جارية على زبون سفري.`
-                      : `The outstanding amount of ${formatIQD(Math.max(0, cartTotalAmount - parseFloat(paidOverride)))} will be tracked as walk-in accounts receivable.`}
-                  </span>
-                </div>
-              )}
-
-              {/* Register Action button */}
-              <button 
-                type="submit"
-                className="w-full py-3 bg-burgundy hover:bg-gold text-white hover:text-burgundy font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md shadow-burgundy/10 flex items-center justify-center gap-2 group"
-              >
-                <ShoppingBag size={14} className="group-hover:scale-110 transition-transform" />
-                <span>{lang === "ar" ? "إتمام وتأكيد البيع" : "Register OTC Sale"}</span>
-              </button>
-            </form>
-          </motion.div>
-        )}
       </div>
 
       {/* Add / Edit OTC Product Modal Dialog */}
@@ -1609,18 +1206,34 @@ export function Inventory() {
                 </div>
 
                 {/* Pricing / Selling Rate */}
-                <div>
-                  <label className="text-[10px] font-bold text-ink-light block uppercase tracking-wider mb-1">
-                    {lang === "ar" ? "سعر البيع الافتراضي للمستهلك" : "Default OTC Selling Price (IQD)"}
-                  </label>
-                  <div className="relative">
-                    <input 
-                      type="number" 
-                      value={formData.unit_price}
-                      onChange={(e) => setFormData(prev => ({ ...prev, unit_price: Number(e.target.value) }))}
-                      className="w-full bg-cream/40 border-2 border-cream-border px-3 py-2.5 rounded-xl text-xs font-mono outline-none focus:border-burgundy"
-                    />
-                    <span className="absolute end-3 top-1/2 -translate-y-1/2 font-bold text-[9px] text-ink-light">IQD</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-ink-light block uppercase tracking-wider mb-1">
+                      {lang === "ar" ? "سعر البيع للمستند" : "Selling Price (IQD)"}
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        value={formData.unit_price}
+                        onChange={(e) => setFormData(prev => ({ ...prev, unit_price: Number(e.target.value) }))}
+                        className="w-full bg-cream/40 border-2 border-cream-border px-3 py-2.5 rounded-xl text-xs font-mono outline-none focus:border-burgundy"
+                      />
+                      <span className="absolute end-3 top-1/2 -translate-y-1/2 font-bold text-[9px] text-ink-light">IQD</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-ink-light block uppercase tracking-wider mb-1">
+                      {lang === "ar" ? "سعر التكلفة للمستند" : "Cost Price (IQD)"}
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        value={formData.cost_price || 0}
+                        onChange={(e) => setFormData(prev => ({ ...prev, cost_price: Number(e.target.value) }))}
+                        className="w-full bg-cream/40 border-2 border-cream-border px-3 py-2.5 rounded-xl text-xs font-mono outline-none focus:border-burgundy"
+                      />
+                      <span className="absolute end-3 top-1/2 -translate-y-1/2 font-bold text-[9px] text-ink-light">IQD</span>
+                    </div>
                   </div>
                 </div>
 

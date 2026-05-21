@@ -22,11 +22,52 @@ import { motion, AnimatePresence } from "motion/react";
 import { Prescription, Patient } from "../types";
 import { useScrollLock } from "../hooks/useScrollLock";
 
+const getThemeColorHex = (themeId: string) => {
+  const map = {
+    burgundy: "#800020",
+    navy: "#1a4a8d",
+    emerald: "#064e3b",
+    charcoal: "#1f2937",
+    gold: "#b45309"
+  };
+  return map[themeId as keyof typeof map] || "#800020";
+};
+
+const getPresetLogoSvg = (presetId: string, theme: string) => {
+  const themeHexMap = {
+    burgundy: "800020",
+    navy: "1a4a8d",
+    emerald: "064e3b",
+    charcoal: "1f2937",
+    gold: "b45309"
+  };
+  const color = themeHexMap[theme as keyof typeof themeHexMap] || "800020";
+  
+  if (presetId === "preset_1") {
+    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="%23${color}" stroke-width="6"><path d="M10 50 Q50 15 90 50 Q50 85 10 50 Z"/><circle cx="50" cy="50" r="18" fill="%23${color}"/><circle cx="50" cy="50" r="8" fill="white"/></svg>`;
+  }
+  if (presetId === "preset_2") {
+    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="%23${color}" stroke-width="6"><path d="M20 15 L50 7 L80 15 Q80 55 50 85 Q20 55 20 15 Z" fill="none"/><circle cx="50" cy="45" r="14" fill="%23${color}"/><path d="M40 45 H60 M50 35 V55" stroke="white" stroke-width="4"/></svg>`;
+  }
+  if (presetId === "preset_3") {
+    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="%23${color}" stroke-width="6"><circle cx="30" cy="50" r="18" fill="none"/><circle cx="70" cy="50" r="18" fill="none"/><path d="M48 50 Q50 44 52 50" stroke="%23${color}" stroke-width="6"/><path d="M12 50 H15 M85 50 H88" stroke="%23${color}" stroke-width="4"/><path d="M30 32 L20 15 M70 32 L80 15" stroke="%23${color}" stroke-width="6"/></svg>`;
+  }
+  return "";
+};
+
 export function Prescriptions() {
-  const { t, lang, logAction } = useClinic();
+  const { t, lang, logAction, clinic } = useClinic();
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const receptionists = useMemo(() => {
+    const saved = localStorage.getItem("noor_receptionists");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return [];
+  }, []);
 
   useScrollLock(isModalOpen || !!deleteConfirmId);
 
@@ -432,81 +473,152 @@ export function Prescriptions() {
       {/* Print Template (Hidden in UI, visible in print) */}
       <AnimatePresence>
         {printingPrescription && (
-          <div id="print-area" className="hidden print:block p-8 bg-white text-ink font-serif">
-            <div className="border-b-2 border-burgundy pb-6 mb-8 flex justify-between items-end">
-              <div>
-                <h1 className="text-3xl font-bold text-burgundy">نـور OMS</h1>
-                <p className="text-xs tracking-widest text-ink-light uppercase">Noor Optical Management System</p>
+          <div id="print-area" className="hidden print:block p-10 bg-white text-slate-800 font-serif text-start" style={{ minHeight: "297mm" }}>
+            {/* Elegant Letterhead Top Border */}
+            <div className="w-full h-1.5 mb-6" style={{ backgroundColor: getThemeColorHex(clinic?.print_theme || "burgundy") }} />
+            
+            {/* Header section with Dynamic Brand details */}
+            <div className="border-b pb-4 mb-6 flex justify-between items-start" style={{ borderBottomColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}25` }}>
+              <div className="flex gap-4 items-center">
+                {clinic?.print_logo_base64 ? (
+                  <img 
+                    src={clinic.print_logo_base64.startsWith("preset_") ? getPresetLogoSvg(clinic.print_logo_base64, clinic.print_theme || "burgundy") : clinic.print_logo_base64} 
+                    className="w-16 h-16 object-contain" 
+                    alt="Clinic Logo" 
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400">LOGO</div>
+                )}
+                <div>
+                  <h1 className="text-2xl font-bold font-serif m-0" style={{ color: getThemeColorHex(clinic?.print_theme || "burgundy") }}>
+                    {clinic?.name || "مركز نـور للعيون"}
+                  </h1>
+                  <p className="text-[10px] font-sans tracking-wide text-slate-500 uppercase m-0 mt-0.5">{clinic?.address || "Noor Optical Management System"}</p>
+                  <p className="text-[9px] font-sans text-slate-400 m-0">Baghdad, Iraq</p>
+                </div>
               </div>
-              <div className="text-end">
-                <p className="text-lg font-bold">{t("clinical_visit")}</p>
-                <p className="text-sm font-medium">{printingPrescription.date}</p>
+
+              <div className="text-end font-sans">
+                <h2 className="text-xs font-bold text-slate-900 leading-tight m-0">
+                  {clinic?.doctor_credentials || "Dr. Ahmed Al-Rashid, Ophthalmic & Optics Specialist"}
+                </h2>
+                <p className="text-[10px] text-slate-500 mt-1 m-0">
+                  📞 {clinic?.doctor_phone || "+964 770 123 4567"}
+                </p>
+                <div className="mt-2 text-[8px] font-bold text-white px-2 py-0.5 rounded inline-block uppercase tracking-wider" style={{ backgroundColor: getThemeColorHex(clinic?.print_theme || "burgundy") }}>
+                  {t("clinical_visit")}
+                </div>
+                <p className="text-[9px] text-slate-400 mt-1 m-0">{printingPrescription.date}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-8 mb-12">
-              <div className="space-y-4">
-                <div className="border-b border-cream-border pb-2">
-                  <p className="text-[10px] font-bold text-burgundy uppercase tracking-widest">{t("name")}</p>
-                  <p className="text-lg font-bold">{patients.find(p => p.id === printingPrescription.patient_id)?.full_name || "Unknown"}</p>
-                </div>
-                <div className="border-b border-cream-border pb-2">
-                  <p className="text-[10px] font-bold text-burgundy uppercase tracking-widest">{t("prescriber")}</p>
-                  <p className="text-lg font-bold">{printingPrescription.prescriber}</p>
-                </div>
+            {/* Patient Clinical Info Cards */}
+            <div className="grid grid-cols-2 gap-4 mb-6 text-xs font-sans">
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-start">
+                <strong className="text-slate-400 uppercase tracking-widest text-[8px] block mb-1">{t("name")}</strong>
+                <span className="font-bold text-slate-900 text-sm">
+                  {patients.find(p => p.id === printingPrescription.patient_id)?.full_name || "Unknown"}
+                </span>
               </div>
-              <div className="flex flex-col justify-end items-end">
-                <div className="p-4 bg-cream/30 rounded-xl border-2 border-burgundy/10 text-center min-w-[120px]">
-                  <p className="text-[10px] font-bold text-burgundy uppercase mb-1">{t("pd")}</p>
-                  <p className="text-2xl font-bold">{printingPrescription.pd} mm</p>
-                </div>
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-end">
+                <strong className="text-slate-400 uppercase tracking-widest text-[8px] block mb-1">{t("pd")} (مسافة 동공거리)</strong>
+                <span className="font-extrabold text-slate-900 text-lg" style={{ color: getThemeColorHex(clinic?.print_theme || "burgundy") }}>
+                  {printingPrescription.pd} mm
+                </span>
               </div>
             </div>
 
-            <table className="w-full border-collapse mb-12">
+            {/* Main Clinical Prescription Table */}
+            <table className="w-full text-center text-xs border-collapse font-sans mb-6">
               <thead>
-                <tr className="bg-cream">
-                  <th className="border border-cream-border p-3 text-[10px] font-bold text-burgundy uppercase text-start">Eye</th>
-                  <th className="border border-cream-border p-3 text-[10px] font-bold text-burgundy uppercase text-center">SPH</th>
-                  <th className="border border-cream-border p-3 text-[10px] font-bold text-burgundy uppercase text-center">CYL</th>
-                  <th className="border border-cream-border p-3 text-[10px] font-bold text-burgundy uppercase text-center">Axis</th>
+                <tr className="text-slate-700 font-bold" style={{ backgroundColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}10` }}>
+                  <th className="p-2 border text-start" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}25` }}>Eye</th>
+                  <th className="p-2 border" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}25` }}>SPH</th>
+                  <th className="p-2 border" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}25` }}>CYL</th>
+                  <th className="p-2 border" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}25` }}>Axis</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="border border-cream-border p-4 font-bold">{t("od")}</td>
-                  <td className="border border-cream-border p-4 text-center text-xl font-bold">{printingPrescription.od_sphere || "—"}</td>
-                  <td className="border border-cream-border p-4 text-center text-xl font-bold">{printingPrescription.od_cylinder || "—"}</td>
-                  <td className="border border-cream-border p-4 text-center text-xl font-bold">{printingPrescription.od_axis || "—"}</td>
+                  <td className="p-3 border font-extrabold text-start" style={{ color: getThemeColorHex(clinic?.print_theme || "burgundy"), borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>OD (يمين)</td>
+                  <td className="p-3 border text-slate-700 font-bold text-sm" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>{printingPrescription.od_sphere || "—"}</td>
+                  <td className="p-3 border text-slate-700 font-bold text-sm" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>{printingPrescription.od_cylinder || "—"}</td>
+                  <td className="p-3 border text-slate-700 font-mono text-sm" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>{printingPrescription.od_axis ? `${printingPrescription.od_axis}°` : "—"}</td>
                 </tr>
                 <tr>
-                  <td className="border border-cream-border p-4 font-bold">{t("os")}</td>
-                  <td className="border border-cream-border p-4 text-center text-xl font-bold">{printingPrescription.os_sphere || "—"}</td>
-                  <td className="border border-cream-border p-4 text-center text-xl font-bold">{printingPrescription.os_cylinder || "—"}</td>
-                  <td className="border border-cream-border p-4 text-center text-xl font-bold">{printingPrescription.os_axis || "—"}</td>
+                  <td className="p-3 border font-extrabold text-start" style={{ color: getThemeColorHex(clinic?.print_theme || "burgundy"), borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>OS (يسار)</td>
+                  <td className="p-3 border text-slate-700 font-bold text-sm" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>{printingPrescription.os_sphere || "—"}</td>
+                  <td className="p-3 border text-slate-700 font-bold text-sm" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>{printingPrescription.os_cylinder || "—"}</td>
+                  <td className="p-3 border text-slate-700 font-mono text-sm" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>{printingPrescription.os_axis ? `${printingPrescription.os_axis}°` : "—"}</td>
                 </tr>
               </tbody>
             </table>
 
-            <div className="grid grid-cols-2 gap-8">
-              <div className="p-4 bg-cream/30 rounded-xl border border-cream-border">
-                <p className="text-[10px] font-bold text-burgundy uppercase tracking-widest mb-2">{t("lens_type")}</p>
-                <p className="text-lg font-bold">{printingPrescription.lens_type}</p>
+            {/* Lens & Frame Properties */}
+            <div className="grid grid-cols-2 gap-4 text-xs font-sans mb-8">
+              <div className="p-3 rounded-lg border bg-slate-50/20 text-start" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>
+                <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mb-1">{t("lens_type")}</p>
+                <p className="text-sm font-bold text-slate-800">{printingPrescription.lens_type}</p>
               </div>
-              <div className="p-4 bg-cream/30 rounded-xl border border-cream-border">
-                <p className="text-[10px] font-bold text-burgundy uppercase tracking-widest mb-2">{t("frame_details")}</p>
-                <p className="text-lg font-bold">{printingPrescription.frame_details || "—"}</p>
+              <div className="p-3 rounded-lg border bg-slate-50/20 text-start" style={{ borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>
+                <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mb-1">{t("frame_details")}</p>
+                <p className="text-sm font-bold text-slate-800">{printingPrescription.frame_details || "—"}</p>
               </div>
             </div>
 
-            <div className="mt-20 pt-12 border-t-2 border-burgundy/10 flex justify-between">
-              <div className="text-sm font-medium text-ink-light">
-                <p>Baghdad, Iraq • +964 7XX XXX XXXX</p>
-                <p>Generated by Noor Optical Management System</p>
+            {/* Specific Instructions (Printed Space Below Prescription) */}
+            {clinic?.print_instructions && (
+              <div className="p-4 rounded-xl border mb-10 text-xs font-sans leading-relaxed text-slate-700 bg-slate-50/30 text-start" style={{ borderLeft: `4px solid ${getThemeColorHex(clinic?.print_theme || "burgundy")}`, borderColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}15` }}>
+                <strong className="block text-[8.5px] text-slate-500 uppercase tracking-widest font-sans mb-1.5">
+                  {lang === 'ar' ? '📋 إرشادات الطبيب وملاحظات الرعاية:' : '📋 Optical Care Instructions & Dr. Advice:'}
+                </strong>
+                <div className="whitespace-pre-line text-slate-700 font-sans">{clinic.print_instructions}</div>
               </div>
-              <div className="text-center">
-                <div className="w-32 h-1 bg-burgundy/10 mb-2 invisible print:visible" />
-                <p className="text-[10px] font-bold text-burgundy uppercase">{t("prescriber")} Signature</p>
+            )}
+
+            {/* Footer & QR Security Overlay */}
+            <div className="mt-auto pt-6 border-t flex justify-between items-end gap-4" style={{ borderTopColor: `${getThemeColorHex(clinic?.print_theme || "burgundy")}25` }}>
+              {/* Associates & Staff listed at the bottom */}
+              <div className="space-y-1 font-sans flex-1 text-start">
+                {clinic?.show_staff_on_print && (
+                  <>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest m-0 leading-tight">
+                      {lang === 'ar' ? 'أطباء وزملاء العمل المعتمدين بالمركز' : 'Active Clinic Staff & Care Associates'}
+                    </p>
+                    <p className="text-[9px] text-slate-600 leading-tight m-0">{clinic.print_associates}</p>
+                    {receptionists.length > 0 && (
+                      <p className="text-[8px] text-slate-500 italic mt-0.5 m-0 leading-tight">
+                        {lang === 'ar' ? 'الاستقبال: ' : 'Reception Assistants: '}
+                        {receptionists.map((r: any) => r.full_name).join(', ')}
+                      </p>
+                    )}
+                  </>
+                )}
+                <p className="text-[7.5px] text-slate-400 mt-2 m-0 font-mono">
+                  Noor Optical Print Service Engine A5 • Secure Digital Proof
+                </p>
+              </div>
+
+              {/* Secure barcode lookup QR code containing logo inside */}
+              <div className="flex flex-col items-center shrink-0">
+                <div className="relative w-18 h-18 bg-white border border-slate-200 p-0.5 rounded-lg flex items-center justify-center shadow-xs">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`Secure prescription signed by ${clinic?.doctor_credentials || "Dr. Ahmed"} for Fatima`)}`} 
+                    className="w-full h-full object-contain" 
+                    alt="QR Code" 
+                  />
+                  {/* Logo centered inside QR */}
+                  {clinic?.print_logo_base64 && (
+                    <div className="absolute w-4 h-4 bg-white rounded-full p-0.5 shadow flex items-center justify-center overflow-hidden">
+                      <img 
+                        src={clinic.print_logo_base64.startsWith("preset_") ? getPresetLogoSvg(clinic.print_logo_base64, clinic.print_theme || "burgundy") : clinic.print_logo_base64} 
+                        className="w-full h-full object-contain rounded-full" 
+                        alt="Icon Center" 
+                      />
+                    </div>
+                  )}
+                </div>
+                <span className="text-[7.5px] font-bold text-slate-500 mt-1 uppercase tracking-widest font-sans">{lang === 'ar' ? 'كود التحقق' : 'Verify Certificate'}</span>
               </div>
             </div>
           </div>

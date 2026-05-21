@@ -30,44 +30,86 @@ export interface ClinicContextType {
   setLenses: React.Dispatch<React.SetStateAction<import("../types").LensItem[]>>;
   frames: import("../types").FrameItem[];
   setFrames: React.Dispatch<React.SetStateAction<import("../types").FrameItem[]>>;
-  isQuickSellOpen: boolean;
-  setIsQuickSellOpen: (open: boolean) => void;
+
   inventoryTrigger: number;
   setInventoryTrigger: React.Dispatch<React.SetStateAction<number>>;
+  impersonatedClinic: string | null;
+  setImpersonatedClinic: (name: string | null) => void;
 }
 
 const ClinicContext = createContext<ClinicContextType | undefined>(undefined);
 
 export function ClinicProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Language>((localStorage.getItem("noor_lang") as Language) || "ar");
-  const [user, setUser] = useState<User | null>({
-    id: "u1",
-    full_name: "Dr. Ahmed Ali",
-    username: "ahmed_ali",
-    role: "super_admin",
-    clinic_id: "c1"
-  });
-  const [clinic, setClinic] = useState<Clinic | null>(() => {
-    const saved = localStorage.getItem("noor_clinic_settings");
+  const [user, setUserState] = useState<User | null>(() => {
+    const saved = localStorage.getItem("noor_user");
     if (saved) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        console.error("Error reading clinic settings library:", e);
+        console.error("Error reading saved user session:", e);
       }
     }
     return {
+      id: "u1",
+      full_name: "Dr. Ahmed Ali",
+      username: "ahmed_ali",
+      role: "super_admin",
+      clinic_id: "c1"
+    };
+  });
+
+  const setUser = (u: User | null) => {
+    setUserState(u);
+    if (u) {
+      localStorage.setItem("noor_user", JSON.stringify(u));
+    } else {
+      localStorage.removeItem("noor_user");
+    }
+  };
+
+  const [clinic, setClinic] = useState<Clinic | null>(() => {
+    const saved = localStorage.getItem("noor_clinic_settings");
+    let currentClinic: Clinic = {
       id: "c1",
       name: "Noor Clinic",
       phone: "+964 7XX XXX XXXX",
       address: "Baghdad, Iraq",
-      exclude_pos_from_patient_menu: false
+      exclude_pos_from_patient_menu: false,
+      plan: "trial",
+      print_theme: "burgundy",
+      doctor_credentials: "Dr. Ahmed Al-Rashid, Ophthalmic & Optics Specialist (Baghdad Board)",
+      doctor_phone: "+964 770 123 4567",
+      print_instructions: "1. يرجى مراجعة الطبيب المختص بعد ستة أشهر أو في حال حدوث صداع ومشاكل في النظر.\n2. احرص على ارتداء النظارة أثناء القراءة أو العمل الطويل أمام الشاشات.\n3. تجنب تنظيف العدسات بأقمشة خشنة لتلافي الخدوش.",
+      show_staff_on_print: true,
+      print_associates: "Dr. Sarah Jamil (Consultant Specialist) • Abeer Al-Sadi (Reception Head)"
     };
+    if (saved) {
+      try {
+        currentClinic = { ...currentClinic, ...JSON.parse(saved) };
+      } catch (e) {
+        console.error("Error reading clinic settings library:", e);
+      }
+    }
+    return currentClinic;
   });
   const [currentSection, setCurrentSection] = useState<Section>("dashboard");
   const [inventoryFilter, setInventoryFilter] = useState<string>("all");
-  const [isQuickSellOpen, setIsQuickSellOpen] = useState(false);
+
   const [inventoryTrigger, setInventoryTrigger] = useState(0);
+
+  const [impersonatedClinic, setImpersonatedClinicState] = useState<string | null>(
+    () => localStorage.getItem("noor_impersonated_clinic")
+  );
+
+  const setImpersonatedClinic = (name: string | null) => {
+    setImpersonatedClinicState(name);
+    if (name) {
+      localStorage.setItem("noor_impersonated_clinic", name);
+    } else {
+      localStorage.removeItem("noor_impersonated_clinic");
+    }
+  };
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [followupCount, setFollowupCount] = useState<number>(0);
   const [triggerAddPatient, setTriggerAddPatient] = useState<number>(0);
@@ -144,10 +186,65 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
   }, [clinic]);
 
+  // Sync impersonated clinic settings and subscription plan in real time
+  useEffect(() => {
+    if (impersonatedClinic) {
+      const savedAdminClinics = localStorage.getItem("noor_admin_clinics");
+      if (savedAdminClinics) {
+        try {
+          const clinicsList = JSON.parse(savedAdminClinics);
+          const found = clinicsList.find((c: any) => c.name === impersonatedClinic);
+          if (found) {
+            setClinic(prev => {
+              if (prev && (prev.name !== found.name || prev.plan !== found.plan)) {
+                return {
+                  ...prev,
+                  name: found.name,
+                  plan: found.plan
+                };
+              }
+              return prev;
+            });
+          }
+        } catch (e) {
+          console.error("Error matching impersonated group details:", e);
+        }
+      }
+    }
+  }, [impersonatedClinic]);
+
   useEffect(() => {
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
     document.documentElement.lang = lang;
   }, [lang]);
+
+  // Apply saved branding theme or charcoal default to :root elements on load
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("noor_theme_color") || "charcoal";
+    const BRAND_THEMES = [
+      { id: "burgundy", primary: "#6b1a2a", soft: "#8b2a3e", pale: "#f5e8eb" },
+      { id: "navy", primary: "#1e3a8a", soft: "#2563eb", pale: "#eff6ff" },
+      { id: "emerald", primary: "#047857", soft: "#059669", pale: "#ecfdf5" },
+      { id: "charcoal", primary: "#1f2937", soft: "#4b5563", pale: "#f3f4f6" },
+      { id: "terracotta", primary: "#9a3412", soft: "#ea580c", pale: "#fff7ed" }
+    ];
+    const selected = BRAND_THEMES.find(t => t.id === savedTheme);
+    if (selected) {
+      let cssBlock = document.getElementById("noor-brand-overrides");
+      if (!cssBlock) {
+        cssBlock = document.createElement("style");
+        cssBlock.id = "noor-brand-overrides";
+        document.head.appendChild(cssBlock);
+      }
+      cssBlock.innerHTML = `
+        :root {
+          --color-burgundy: ${selected.primary} !important;
+          --color-burgundy-soft: ${selected.soft} !important;
+          --color-burgundy-pale: ${selected.pale} !important;
+        }
+      `;
+    }
+  }, [currentSection]);
 
   const setLang = (l: Language) => {
     setLangState(l);
@@ -290,8 +387,8 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       patients, setPatients, isLoading, setIsLoading,
       lensCatalog, setLensCatalog,
       lenses, setLenses, frames, setFrames,
-      isQuickSellOpen, setIsQuickSellOpen,
-      inventoryTrigger, setInventoryTrigger
+      inventoryTrigger, setInventoryTrigger,
+      impersonatedClinic, setImpersonatedClinic
     }}>
       {children}
     </ClinicContext.Provider>

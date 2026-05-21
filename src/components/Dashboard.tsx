@@ -1,5 +1,5 @@
 import React from "react";
-import { Users, DollarSign, AlertCircle, TrendingUp, ArrowUpRight, ArrowDownRight, Bell, Package, Calendar, ShoppingCart } from "lucide-react";
+import { Users, DollarSign, AlertCircle, TrendingUp, ArrowUpRight, ArrowDownRight, Bell, Package, Calendar, ShoppingCart, Boxes } from "lucide-react";
 import { useClinic } from "../context/ClinicContext";
 import { formatIQD, cn } from "../lib/utils";
 import { motion } from "motion/react";
@@ -26,7 +26,7 @@ const data = [
 ];
 
 export function Dashboard() {
-  const { t, lang, setCurrentSection, setInventoryFilter, setIsQuickSellOpen, isLoading, patients } = useClinic();
+  const { t, lang, setCurrentSection, setInventoryFilter, isLoading, patients, user } = useClinic();
 
   const [chartRange, setChartRange] = React.useState<"weekly" | "monthly" | "yearly">("weekly");
   const [time, setTime] = React.useState(new Date());
@@ -35,6 +35,14 @@ export function Dashboard() {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const hasFinancePermission = React.useMemo(() => {
+    if (!user) return true; // Default to full permission if no auth context
+    if (user.role === "doctor" || user.role === "super_admin") return true;
+    return !!user.permissions?.viewFinancials;
+  }, [user]);
+
+  const userDisplayName = user?.full_name || (lang === 'ar' ? 'د. أحمد علي' : 'Dr. Ahmed Ali');
 
   const recentSales = React.useMemo(() => {
     const list: any[] = [];
@@ -148,9 +156,13 @@ export function Dashboard() {
 
   const stats = [
     { id: "today_patients", label: t("today_patients"), value: "12", sub: "+20% from yesterday", icon: Users, color: "bg-blue-50 text-blue-600", trend: "up", section: "patients" },
-    { id: "today_earnings", label: t("today_earnings"), value: formatIQD(850000), sub: "Target: 1M IQD", icon: DollarSign, color: "bg-emerald-50 text-emerald-600", trend: "up", section: "reports" },
+    ...(hasFinancePermission ? [
+      { id: "today_earnings", label: t("today_earnings"), value: formatIQD(850000), sub: "Target: 1M IQD", icon: DollarSign, color: "bg-emerald-50 text-emerald-600", trend: "up", section: "reports" },
+    ] : []),
     { id: "outstanding_debt", label: t("outstanding_debt"), value: formatIQD(1240000), sub: "14 clinical cases", icon: AlertCircle, color: "bg-rose-50 text-rose-600", trend: "down", section: "patients" },
-    { id: "monthly_revenue", label: t("monthly_revenue"), value: formatIQD(15400000), sub: "+12% from last month", icon: TrendingUp, color: "bg-amber-50 text-amber-600", trend: "up", section: "reports" },
+    ...(hasFinancePermission ? [
+      { id: "monthly_revenue", label: t("monthly_revenue"), value: formatIQD(15400000), sub: "+12% from last month", icon: TrendingUp, color: "bg-amber-50 text-amber-600", trend: "up", section: "reports" }
+    ] : [])
   ];
 
   if (isLoading) {
@@ -183,7 +195,7 @@ export function Dashboard() {
         <div className="absolute top-0 end-0 w-64 h-64 bg-white/5 rounded-full -me-32 -mt-32 blur-3xl group-hover:bg-white/10 transition-all duration-700 pointer-events-none" />
         <div className="absolute bottom-0 start-0 w-48 h-48 bg-gold/10 rounded-full -ms-24 -mb-24 blur-2xl pointer-events-none" />
         
-        <div className="relative z-10 flex-1">
+        <div className="relative z-10 flex-1 text-start">
           <motion.p 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -197,7 +209,7 @@ export function Dashboard() {
             transition={{ delay: 0.1 }}
             className="text-2xl lg:text-4xl font-serif font-bold mb-4"
           >
-            {t("welcome_back")}، د. أحمد
+            {t("welcome_back")}، {userDisplayName}
           </motion.h1>
           <motion.p 
             initial={{ opacity: 0 }}
@@ -242,12 +254,15 @@ export function Dashboard() {
       </div>
 
 
-      {/* Premium Quick POS Sell Action Row */}
+      {/* Premium Storage & Stock Control Action Row */}
       <motion.div
         initial={{ opacity: 0, y: -15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        onClick={() => setIsQuickSellOpen(true)}
+        onClick={() => {
+          setInventoryFilter("all");
+          setCurrentSection("inventory");
+        }}
         className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-r from-burgundy via-[#2c0b11] to-ink border-2 border-gold/40 hover:border-gold cursor-pointer group shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 select-none"
       >
         {/* Decorative ambient glowing backdrops */}
@@ -257,31 +272,31 @@ export function Dashboard() {
         <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-gold text-ink flex items-center justify-center shrink-0 shadow-lg shadow-gold/20 group-hover:scale-110 transition-transform duration-300">
-              <ShoppingCart size={22} className="stroke-[2.5]" />
+              <Boxes size={22} className="stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-bold text-gold tracking-widest uppercase font-[Verdana] bg-white/5 px-2.5 py-0.5 rounded border border-gold/15">
-                  {lang === 'ar' ? 'بوابة مبيعات سريعة' : 'POS EXPRESSWAY'}
+                  {lang === 'ar' ? 'مستودع العيادة والمخزون' : 'CLINIC WAREHOUSE & STOCK'}
                 </span>
                 <span className="text-[9px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded font-[Verdana] animate-pulse tracking-wide">
-                  {lang === 'ar' ? 'فوري متاح' : 'LIVE CONSOLE'}
+                  {lang === 'ar' ? 'نشط ومحدث' : 'ACTIVE CONSOLE'}
                 </span>
               </div>
               <h3 className="text-base sm:text-lg font-serif font-bold text-white mt-1 group-hover:text-gold transition-colors tracking-tight">
-                {lang === 'ar' ? 'تسجيل مبيعات سريعة فورية (بدون بطاقة مريض)' : 'Launch Quick POS Retail Window'}
+                {lang === 'ar' ? 'لوحة مراقبة وإدارة المخزن والمستودع' : 'Launch Storage & Inventory Workspace'}
               </h3>
               <p className="text-xs text-white/70 max-w-xl font-sans leading-relaxed mt-0.5">
                 {lang === 'ar' 
-                  ? 'قم بإصدار تفريغ فوري من الرفوف، الفوترة الفورية واحتساب الفكة والربح دون الحاجة لتسجيل ملف مريض مسبقاً.' 
-                  : 'Skip formal patient clinical workflow. Immediately process direct sales of lenses, spectacles, frames, or accessories.'}
+                  ? 'راقب مستويات توفر النظارات الجاهزة والعدسات، تتبع النواقص، مستويات إعادة الطلب، وتكاليف عقود المجهزين.' 
+                  : 'Monitor optical stocks, contact lenses, ready spectacles or frame item quantities, and track active procurement from suppliers.'}
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-3 self-stretch sm:self-auto justify-end shrink-0">
             <span className="text-xs font-[Verdana] font-bold text-gold bg-white/5 border border-gold/30 rounded-xl px-4 py-2 hover:bg-gold hover:text-ink transition-all hidden sm:inline-block">
-              {lang === 'ar' ? 'افتح الكاشير' : 'Open Register'}
+              {lang === 'ar' ? 'افتح جرد المخزن' : 'Browse Inventory'}
             </span>
             <div className="w-10 h-10 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-gold group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 duration-300 shrink-0">
               <ArrowUpRight size={20} className={lang === 'ar' ? '-scale-x-100' : ''} />
@@ -333,97 +348,99 @@ export function Dashboard() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6">
         {/* Main Chart */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="lg:col-span-3 card p-4 sm:p-6 flex flex-col"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-4 shrink-0">
-            <div>
-              <h3 className="text-lg font-serif font-bold text-ink">
-                {chartRange === "weekly" ? t("last_7_days") || "Last 7 Days" : 
-                 chartRange === "monthly" ? t("last_30_days") || "Last 30 Days" : 
-                 lang === 'ar' ? "آخر 12 شهراً" : "Yearly Overview"}
-              </h3>
-              <p className="text-[10px] text-ink-light uppercase tracking-widest font-bold mt-1">{lang === 'ar' ? 'تحليلات الإيرادات' : 'Revenue Analytics'}</p>
+        {hasFinancePermission && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="lg:col-span-3 card p-4 sm:p-6 flex flex-col"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-4 shrink-0">
+              <div>
+                <h3 className="text-lg font-serif font-bold text-ink">
+                  {chartRange === "weekly" ? t("last_7_days") || "Last 7 Days" : 
+                   chartRange === "monthly" ? t("last_30_days") || "Last 30 Days" : 
+                   lang === 'ar' ? "آخر 12 شهراً" : "Yearly Overview"}
+                </h3>
+                <p className="text-[10px] text-ink-light uppercase tracking-widest font-bold mt-1">{lang === 'ar' ? 'تحليلات الإيرادات' : 'Revenue Analytics'}</p>
+              </div>
+              <div className="flex gap-1 sm:gap-1.5 p-1 bg-cream rounded-xl border border-cream-border overflow-x-auto w-full sm:w-auto scrollbar-hide shrink-0">
+                <button 
+                  onClick={() => setChartRange("weekly")} 
+                  className={cn("flex-1 sm:flex-none px-2 sm:px-4 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", chartRange === "weekly" ? "bg-white text-burgundy shadow-sm" : "text-ink-light hover:text-ink")}
+                >
+                  {lang === 'ar' ? 'أسبوعي' : 'Weekly'}
+                </button>
+                <button 
+                  onClick={() => setChartRange("monthly")} 
+                  className={cn("flex-1 sm:flex-none px-2 sm:px-4 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", chartRange === "monthly" ? "bg-white text-burgundy shadow-sm" : "text-ink-light hover:text-ink")}
+                >
+                  {lang === 'ar' ? 'شهري' : 'Monthly'}
+                </button>
+                <button 
+                  onClick={() => setChartRange("yearly")} 
+                  className={cn("flex-1 sm:flex-none px-2 sm:px-4 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", chartRange === "yearly" ? "bg-white text-burgundy shadow-sm" : "text-ink-light hover:text-ink")}
+                >
+                  {lang === 'ar' ? 'سنوي' : 'Yearly'}
+                </button>
+              </div>
             </div>
-            <div className="flex gap-1 sm:gap-1.5 p-1 bg-cream rounded-xl border border-cream-border overflow-x-auto w-full sm:w-auto scrollbar-hide shrink-0">
-              <button 
-                onClick={() => setChartRange("weekly")} 
-                className={cn("flex-1 sm:flex-none px-2 sm:px-4 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", chartRange === "weekly" ? "bg-white text-burgundy shadow-sm" : "text-ink-light hover:text-ink")}
-              >
-                {lang === 'ar' ? 'أسبوعي' : 'Weekly'}
-              </button>
-              <button 
-                onClick={() => setChartRange("monthly")} 
-                className={cn("flex-1 sm:flex-none px-2 sm:px-4 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", chartRange === "monthly" ? "bg-white text-burgundy shadow-sm" : "text-ink-light hover:text-ink")}
-              >
-                {lang === 'ar' ? 'شهري' : 'Monthly'}
-              </button>
-              <button 
-                onClick={() => setChartRange("yearly")} 
-                className={cn("flex-1 sm:flex-none px-2 sm:px-4 py-1.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all", chartRange === "yearly" ? "bg-white text-burgundy shadow-sm" : "text-ink-light hover:text-ink")}
-              >
-                {lang === 'ar' ? 'سنوي' : 'Yearly'}
-              </button>
+            
+            <div className="min-h-[250px] sm:min-h-[300px] mt-4 -mx-4 sm:-mx-6 w-[calc(100%+2rem)] sm:w-[calc(100%+3rem)] relative z-10 outline-none [&_*]:outline-none" style={{ WebkitTapHighlightColor: 'transparent' }}>
+              <ResponsiveContainer width="100%" height="100%" className="outline-none">
+                <AreaChart data={activeData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }} style={{ outline: 'none' }}>
+                  <defs>
+                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6b1a2a" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#6b1a2a" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0ead8" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 10, fill: '#8a7d70', fontWeight: 600 }}
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 10, fill: '#8a7d70', fontWeight: 600 }}
+                    tickFormatter={(val) => `${val/1000}k`}
+                  />
+                  <Tooltip 
+                    cursor={{ stroke: '#e8dcc8', strokeWidth: 1, strokeDasharray: '3 3', fill: 'transparent' }}
+                    contentStyle={{ 
+                      backgroundColor: '#fff', 
+                      border: '1px solid #e8dcc8', 
+                      borderRadius: '12px',
+                      boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                      outline: 'none'
+                    }}
+                    itemStyle={{ color: '#6b1a2a', fontWeight: 'bold' }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke="#6b1a2a" 
+                    strokeWidth={3}
+                    fillOpacity={1} 
+                    fill="url(#colorValue)" 
+                    activeDot={{ r: 6, strokeWidth: 0, fill: '#6b1a2a', style: { outline: 'none' } }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-          
-          <div className="min-h-[250px] sm:min-h-[300px] mt-4 -mx-4 sm:-mx-6 w-[calc(100%+2rem)] sm:w-[calc(100%+3rem)] relative z-10 outline-none [&_*]:outline-none" style={{ WebkitTapHighlightColor: 'transparent' }}>
-            <ResponsiveContainer width="100%" height="100%" className="outline-none">
-              <AreaChart data={activeData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }} style={{ outline: 'none' }}>
-                <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6b1a2a" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#6b1a2a" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0ead8" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: '#8a7d70', fontWeight: 600 }}
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: '#8a7d70', fontWeight: 600 }}
-                  tickFormatter={(val) => `${val/1000}k`}
-                />
-                <Tooltip 
-                  cursor={{ stroke: '#e8dcc8', strokeWidth: 1, strokeDasharray: '3 3', fill: 'transparent' }}
-                  contentStyle={{ 
-                    backgroundColor: '#fff', 
-                    border: '1px solid #e8dcc8', 
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-                    outline: 'none'
-                  }}
-                  itemStyle={{ color: '#6b1a2a', fontWeight: 'bold' }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#6b1a2a" 
-                  strokeWidth={3}
-                  fillOpacity={1} 
-                  fill="url(#colorValue)" 
-                  activeDot={{ r: 6, strokeWidth: 0, fill: '#6b1a2a', style: { outline: 'none' } }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
 
         {/* Recent Activity */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7 }}
-          className="lg:col-span-2 card p-4 sm:p-6"
+          className={cn("card p-4 sm:p-6 flex flex-col", hasFinancePermission ? "lg:col-span-2" : "lg:col-span-5 col-span-full")}
         >
           <div className="mb-6 flex items-center justify-between">
             <div>
@@ -448,7 +465,7 @@ export function Dashboard() {
                   key={sale.id || i} 
                   onClick={() => {
                     if (sale.patientId === "walkin_retail") {
-                      setCurrentSection("reports");
+                      if (hasFinancePermission) setCurrentSection("reports");
                     } else {
                       setCurrentSection("patients");
                     }
@@ -464,14 +481,16 @@ export function Dashboard() {
                       {sale.name ? sale.name[0] : "?"}
                     </div>
                   )}
-                  <div className="flex-1 min-w-0 pe-2">
+                  <div className="flex-1 min-w-0 pe-2 text-start">
                     <h4 className="text-[13px] sm:text-sm font-bold text-ink truncate group-hover:text-burgundy transition-colors">
                       {sale.name}
                     </h4>
                     <p className="text-[10px] text-ink-light truncate font-medium" title={sale.type}>{sale.type}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-xs font-bold text-burgundy tracking-tight tabular-nums">{formatIQD(sale.price)}</p>
+                    {hasFinancePermission && (
+                      <p className="text-xs font-bold text-burgundy tracking-tight tabular-nums">{formatIQD(sale.price)}</p>
+                    )}
                     <p className="text-[9px] sm:text-[10px] text-ink-light mt-0.5">{getFriendlyDate(sale.visit_date)}</p>
                   </div>
                 </div>

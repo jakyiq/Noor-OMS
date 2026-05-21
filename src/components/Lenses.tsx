@@ -432,12 +432,13 @@ export function Lenses() {
         <div className="hidden lg:grid grid-cols-12 gap-3 px-6 py-4 bg-cream/50 border-b border-cream-border items-center">
           <div className="col-span-2 text-[10px] font-bold text-ink-light uppercase tracking-widest">{t("name")}</div>
           <div className="col-span-2 text-[10px] font-bold text-ink-light uppercase tracking-widest">{t("material")}</div>
-          <div className="col-span-2 text-[10px] font-bold text-ink-light uppercase tracking-widest">Coating</div>
+          <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">Coating</div>
           <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">SPH</div>
           <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">CYL</div>
           <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">{t("qty")}</div>
+          <div className="col-span-2 text-[10px] font-bold text-ink-light uppercase tracking-widest">{lang === 'ar' ? 'التكلفة / البيع' : 'Cost & Price'}</div>
           <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">Status</div>
-          <div className="col-span-2 text-end"></div>
+          <div className="col-span-1 text-end"></div>
         </div>
 
         <div className="divide-y divide-cream-border">
@@ -458,7 +459,7 @@ export function Lenses() {
                   <span className="lg:hidden text-[10px] uppercase text-ink-light tracking-widest font-sans select-none">{t("material")}</span>
                   <span>{getLabel('material', l.material)}</span>
                 </div>
-                <div className="col-span-2 w-full flex justify-between lg:block text-sm text-ink-mid items-center">
+                <div className="col-span-1 w-full flex justify-between lg:block text-sm text-ink-mid items-center">
                   <span className="lg:hidden text-[10px] uppercase text-ink-light tracking-widest font-sans select-none">Coating</span>
                   <span>{getLabel('coating', l.coating)}</span>
                 </div>
@@ -474,6 +475,13 @@ export function Lenses() {
                   <span className="lg:hidden text-[10px] uppercase text-ink-light tracking-widest font-sans select-none">{t("qty")}</span>
                   <span>{l.quantity}</span>
                 </div>
+                <div className="col-span-2 w-full flex justify-between lg:block items-center">
+                  <span className="lg:hidden text-[10px] uppercase text-ink-light tracking-widest font-sans select-none">{lang === 'ar' ? 'التكلفة / البيع' : 'Cost & Price'}</span>
+                  <div>
+                    <div className="text-sm font-bold font-mono text-ink">{formatIQD(l.sell_price || 0)}</div>
+                    <div className="text-[10px] text-ink-light font-mono line-through mt-0.5">{formatIQD(l.cost_price || 0)}</div>
+                  </div>
+                </div>
                 <div className="col-span-1 w-full flex justify-between lg:block items-center">
                   <span className="lg:hidden text-[10px] uppercase text-ink-light tracking-widest font-sans select-none">Status</span>
                   <span className={cn(
@@ -484,7 +492,7 @@ export function Lenses() {
                     {isOut ? t("out") : isLow ? t("low") : 'OK'}
                   </span>
                 </div>
-                <div className="col-span-2 flex w-full lg:w-auto justify-end gap-2 border-t border-cream-border lg:border-none pt-3 lg:pt-0 mt-2 lg:mt-0">
+                <div className="col-span-1 flex w-full lg:w-auto justify-end gap-2 border-t border-cream-border lg:border-none pt-3 lg:pt-0 mt-2 lg:mt-0">
                   <button onClick={() => setRestockLens(l)} className="flex-1 lg:flex-none p-2 text-ink-light hover:text-burgundy hover:bg-cream rounded-lg transition-colors border border-transparent hover:border-cream-border flex items-center justify-center" title="Restock">
                     <Plus size={16} />
                   </button>
@@ -1007,6 +1015,31 @@ export function Lenses() {
                   onClick={() => {
                     if (restockAmount > 0) {
                       setLenses(prev => prev.map(l => l.id === restockLens.id ? { ...l, quantity: l.quantity + restockAmount } : l));
+                      
+                      // Ledger this inside reports as an opex expense
+                      const totalCost = Number(restockAmount) * Number(restockLens.cost_price || 5000);
+                      let currentExps = [];
+                      const savedExps = localStorage.getItem("noor_expenses");
+                      if (savedExps) {
+                        try {
+                          currentExps = JSON.parse(savedExps);
+                        } catch (err) {
+                          currentExps = [];
+                        }
+                      }
+                      
+                      const newExpense = {
+                        id: "e_lens_restock_" + Math.random().toString(36).substring(7),
+                        description: lang === "ar"
+                          ? `توريد وإعادة تزويد مخزون عدسة [${getLabel('type', restockLens.lens_type)} SPH: ${restockLens.sphere > 0 ? '+' : ''}${restockLens.sphere}] عدد ${restockAmount}`
+                          : `Restock Lens Inventory: ${restockLens.lens_type} (SPH: ${restockLens.sphere > 0 ? '+' : ''}${restockLens.sphere}, Qty x${restockAmount})`,
+                        category: "lab" as const,
+                        amount: totalCost,
+                        date: new Date().toISOString().split("T")[0]
+                      };
+                      
+                      currentExps.unshift(newExpense);
+                      localStorage.setItem("noor_expenses", JSON.stringify(currentExps));
                     }
                     setRestockLens(null);
                     setRestockAmount(10);

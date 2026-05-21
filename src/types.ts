@@ -1,12 +1,20 @@
 export type Language = "ar" | "en";
 export type UserRole = "doctor" | "receptionist" | "super_admin";
 
+export interface UserPermissions {
+  viewFinancials: boolean;
+  auditOrders: boolean;
+  editPatients: boolean;
+  editSettings: boolean;
+}
+
 export interface User {
   id: string;
   full_name: string;
   username: string;
   role: UserRole;
   clinic_id: string;
+  permissions?: UserPermissions;
 }
 
 export interface Patient {
@@ -108,6 +116,7 @@ export interface InventoryItem {
   stock_level: number;
   reorder_point: number;
   unit_price: number;
+  cost_price?: number;
   supplier_id?: string;
   updated_at: string;
 }
@@ -144,4 +153,13 @@ export interface Clinic {
   wa_template_2?: string;
   wa_template_3?: string;
   default_followup_months?: number;
+  plan?: "trial" | "quarterly" | "yearly" | "lifetime";
+  exclude_pos_from_patient_menu?: boolean;
+  print_theme?: "burgundy" | "navy" | "emerald" | "charcoal" | "gold";
+  doctor_credentials?: string;
+  doctor_phone?: string;
+  print_instructions?: string;
+  print_logo_base64?: string;
+  show_staff_on_print?: boolean;
+  print_associates?: string;
 }
