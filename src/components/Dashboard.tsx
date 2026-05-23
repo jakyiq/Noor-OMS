@@ -3,6 +3,7 @@ import { Users, DollarSign, AlertCircle, TrendingUp, ArrowUpRight, ArrowDownRigh
 import { useClinic } from "../context/ClinicContext";
 import { formatIQD, cn } from "../lib/utils";
 import { motion } from "motion/react";
+import { QuickSellModal } from "./QuickSellModal";
 import { 
   BarChart, 
   Bar, 
@@ -15,21 +16,12 @@ import {
   Area
 } from "recharts";
 
-const data = [
-  { name: "Sun", value: 400000 },
-  { name: "Mon", value: 300000 },
-  { name: "Tue", value: 500000 },
-  { name: "Wed", value: 278000 },
-  { name: "Thu", value: 189000 },
-  { name: "Fri", value: 239000 },
-  { name: "Sat", value: 349000 },
-];
-
 export function Dashboard() {
-  const { t, lang, setCurrentSection, setInventoryFilter, isLoading, patients, user } = useClinic();
+  const { t, lang, setCurrentSection, setInventoryFilter, isLoading, patients, user, lenses, frames } = useClinic();
 
   const [chartRange, setChartRange] = React.useState<"weekly" | "monthly" | "yearly">("weekly");
   const [time, setTime] = React.useState(new Date());
+  const [isQuickSellOpen, setIsQuickSellOpen] = React.useState(false);
 
   React.useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -120,48 +112,204 @@ export function Dashboard() {
     });
   };
 
-  const weeklyData = [
-    { name: "Sun", value: 400000 },
-    { name: "Mon", value: 300000 },
-    { name: "Tue", value: 500000 },
-    { name: "Wed", value: 278000 },
-    { name: "Thu", value: 189000 },
-    { name: "Fri", value: 239000 },
-    { name: "Sat", value: 349000 },
-  ];
+  const weeklyData = React.useMemo(() => {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const map = days.reduce((acc, d) => ({ ...acc, [d]: 0 }), {} as Record<string, number>);
 
-  const monthlyData = [
-    { name: "W1", value: 1200000 },
-    { name: "W2", value: 1500000 },
-    { name: "W3", value: 1100000 },
-    { name: "W4", value: 1800000 },
-  ];
+    // Get dates of the current week (Sunday to Saturday)
+    const now = new Date();
+    const currentDay = now.getDay();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - currentDay);
 
-  const yearlyData = [
-    { name: "Jan", value: 4500000 },
-    { name: "Feb", value: 5200000 },
-    { name: "Mar", value: 4800000 },
-    { name: "Apr", value: 6100000 },
-    { name: "May", value: 5900000 },
-    { name: "Jun", value: 6500000 },
-    { name: "Jul", value: 7100000 },
-    { name: "Aug", value: 6800000 },
-    { name: "Sep", value: 7500000 },
-    { name: "Oct", value: 8100000 },
-    { name: "Nov", value: 7900000 },
-    { name: "Dec", value: 8500000 },
-  ];
+    const weekDates: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startOfWeek);
+      d.setDate(startOfWeek.getDate() + i);
+      weekDates.push(d.toISOString().split("T")[0]);
+    }
+
+    if (patients && Array.isArray(patients)) {
+      patients.forEach(p => {
+        if (p.visits && Array.isArray(p.visits)) {
+          p.visits.forEach(v => {
+            const idx = weekDates.indexOf(v.visit_date);
+            if (idx !== -1) {
+              const dayName = days[idx];
+              map[dayName] += v.total_amount || 0;
+            }
+          });
+        }
+      });
+    }
+
+    return days.map(day => ({ name: day, value: map[day] }));
+  }, [patients]);
+
+  const monthlyData = React.useMemo(() => {
+    const weeks = ["W1", "W2", "W3", "W4"];
+    const map = { W1: 0, W2: 0, W3: 0, W4: 0 } as Record<string, number>;
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    if (patients && Array.isArray(patients)) {
+      patients.forEach(p => {
+        if (p.visits && Array.isArray(p.visits)) {
+          p.visits.forEach(v => {
+            const d = new Date(v.visit_date);
+            if (d.getFullYear() === year && d.getMonth() === month) {
+              const dom = d.getDate();
+              if (dom <= 7) map.W1 += v.total_amount || 0;
+              else if (dom <= 14) map.W2 += v.total_amount || 0;
+              else if (dom <= 21) map.W3 += v.total_amount || 0;
+              else map.W4 += v.total_amount || 0;
+            }
+          });
+        }
+      });
+    }
+
+    return weeks.map(w => ({ name: w, value: map[w] }));
+  }, [patients]);
+
+  const yearlyData = React.useMemo(() => {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const map = months.reduce((acc, m) => ({ ...acc, [m]: 0 }), {} as Record<string, number>);
+
+    const now = new Date();
+    const year = now.getFullYear();
+
+    if (patients && Array.isArray(patients)) {
+      patients.forEach(p => {
+        if (p.visits && Array.isArray(p.visits)) {
+          p.visits.forEach(v => {
+            const d = new Date(v.visit_date);
+            if (d.getFullYear() === year) {
+              const mName = months[d.getMonth()];
+              map[mName] += v.total_amount || 0;
+            }
+          });
+        }
+      });
+    }
+
+    return months.map(m => ({ name: m, value: map[m] }));
+  }, [patients]);
 
   const activeData = chartRange === "weekly" ? weeklyData : chartRange === "monthly" ? monthlyData : yearlyData;
 
+  const dynamicStats = React.useMemo(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const currentYearMonth = todayStr.substring(0, 7);
+
+    let todayPatientsCount = 0;
+    let todayEarningsSum = 0;
+    let totalOutstandingDebt = 0;
+    let debtorsCount = 0;
+    let monthlyRevenueSum = 0;
+
+    if (patients && Array.isArray(patients)) {
+      patients.forEach(p => {
+        const debt = p.outstanding || 0;
+        totalOutstandingDebt += debt;
+        if (debt > 0) {
+          debtorsCount += 1;
+        }
+        
+        if (p.visits && Array.isArray(p.visits)) {
+          p.visits.forEach(v => {
+            if (v.visit_date === todayStr) {
+              todayPatientsCount += 1;
+              todayEarningsSum += v.amount_paid || 0;
+            }
+            if (v.visit_date && v.visit_date.startsWith(currentYearMonth)) {
+              monthlyRevenueSum += v.total_amount || 0;
+            }
+          });
+        }
+      });
+    }
+
+    return {
+      todayPatients: todayPatientsCount,
+      todayEarnings: todayEarningsSum,
+      outstandingDebt: totalOutstandingDebt,
+      debtorsCount,
+      monthlyRevenue: monthlyRevenueSum
+    };
+  }, [patients]);
+
+  const dynamicAlerts = React.useMemo(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    let todayFollowups = 0;
+    if (patients && Array.isArray(patients)) {
+      patients.forEach(p => {
+        if (p.visits && Array.isArray(p.visits)) {
+          p.visits.forEach(v => {
+            if (v.next_visit_date === todayStr) {
+              todayFollowups += 1;
+            }
+          });
+        }
+      });
+    }
+
+    const lowStockLenses = lenses ? lenses.filter((l: any) => l.quantity <= (l.min_stock || 0)).length : 0;
+    const lowStockFrames = frames ? frames.filter((f: any) => f.quantity <= (f.min_stock || 0)).length : 0;
+    const lowStockCount = lowStockLenses + lowStockFrames;
+
+    return {
+      todayFollowups,
+      lowStockAlerts: lowStockCount
+    };
+  }, [patients, lenses, frames]);
+
   const stats = [
-    { id: "today_patients", label: t("today_patients"), value: "12", sub: "+20% from yesterday", icon: Users, color: "bg-blue-50 text-blue-600", trend: "up", section: "patients" },
+    { 
+      id: "today_patients", 
+      label: t("today_patients"), 
+      value: String(dynamicStats.todayPatients), 
+      sub: lang === "ar" ? "جلسات فحص نشطة اليوم" : "Active checkup sessions today", 
+      icon: Users, 
+      color: "bg-blue-50 text-blue-600", 
+      trend: "up", 
+      section: "patients" 
+    },
     ...(hasFinancePermission ? [
-      { id: "today_earnings", label: t("today_earnings"), value: formatIQD(850000), sub: "Target: 1M IQD", icon: DollarSign, color: "bg-emerald-50 text-emerald-600", trend: "up", section: "reports" },
+      { 
+        id: "today_earnings", 
+        label: t("today_earnings"), 
+        value: formatIQD(dynamicStats.todayEarnings), 
+        sub: lang === "ar" ? "مدفوعات صندوق اليوم" : "Vault cash collected today", 
+        icon: DollarSign, 
+        color: "bg-emerald-50 text-emerald-600", 
+        trend: "up", 
+        section: "reports" 
+      },
     ] : []),
-    { id: "outstanding_debt", label: t("outstanding_debt"), value: formatIQD(1240000), sub: "14 clinical cases", icon: AlertCircle, color: "bg-rose-50 text-rose-600", trend: "down", section: "patients" },
+    { 
+      id: "outstanding_debt", 
+      label: t("outstanding_debt"), 
+      value: formatIQD(dynamicStats.outstandingDebt), 
+      sub: lang === "ar" ? `${dynamicStats.debtorsCount} حسابات معلقة` : `${dynamicStats.debtorsCount} medical accounts pending`, 
+      icon: AlertCircle, 
+      color: "bg-rose-50 text-rose-600", 
+      trend: "down", 
+      section: "patients" 
+    },
     ...(hasFinancePermission ? [
-      { id: "monthly_revenue", label: t("monthly_revenue"), value: formatIQD(15400000), sub: "+12% from last month", icon: TrendingUp, color: "bg-amber-50 text-amber-600", trend: "up", section: "reports" }
+      { 
+        id: "monthly_revenue", 
+        label: t("monthly_revenue"), 
+        value: formatIQD(dynamicStats.monthlyRevenue), 
+        sub: lang === "ar" ? "قيمة مبيعات الشهر الحالي" : "Gross sales this bill-cycle", 
+        icon: TrendingUp, 
+        color: "bg-amber-50 text-amber-600", 
+        trend: "up", 
+        section: "reports" 
+      }
     ] : [])
   ];
 
@@ -218,8 +366,8 @@ export function Dashboard() {
             className="max-w-md text-white/70 text-sm leading-relaxed"
           >
             {lang === 'ar' 
-              ? 'لديك 12 موعداً مجدولاً لليوم و 4 تنبيهات لمخزون العدسات المنخفض.' 
-              : 'You have 12 appointments scheduled for today and 4 low stock alerts for lenses.'}
+              ? `لديك ${dynamicAlerts.todayFollowups} موعد متابعة مجدول لليوم و ${dynamicAlerts.lowStockAlerts} تنبيهات لمخزون العيادة المنخفض.` 
+              : `You have ${dynamicAlerts.todayFollowups} scheduled follow-up visits for today and ${dynamicAlerts.lowStockAlerts} clinic low stock alerts.`}
           </motion.p>
         </div>
 
@@ -260,47 +408,61 @@ export function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
         onClick={() => {
-          setInventoryFilter("all");
-          setCurrentSection("inventory");
+          setIsQuickSellOpen(true);
         }}
-        className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-r from-burgundy via-[#2c0b11] to-ink border-2 border-gold/40 hover:border-gold cursor-pointer group shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 select-none"
+        className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-r from-burgundy via-[#2c0b11] to-ink border-2 border-gold/40 hover:border-gold cursor-pointer group shadow-xl transition-all duration-300 transform md:hover:-translate-y-0.5 select-none"
       >
         {/* Decorative ambient glowing backdrops */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-gold/10 rounded-full blur-2xl group-hover:bg-gold/25 transition-all duration-500 pointer-events-none" />
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gold/10 rounded-full blur-2xl md:group-hover:bg-gold/25 transition-all duration-500 pointer-events-none" />
         <div className="absolute -bottom-4 left-10 w-24 h-24 bg-rose-500/10 rounded-full blur-xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gold text-ink flex items-center justify-center shrink-0 shadow-lg shadow-gold/20 group-hover:scale-110 transition-transform duration-300">
-              <Boxes size={22} className="stroke-[2.5]" />
+            <div className="w-12 h-12 rounded-2xl bg-gold text-ink flex items-center justify-center shrink-0 shadow-lg shadow-gold/20 md:group-hover:scale-110 transition-transform duration-300">
+              <ShoppingCart size={22} className="stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-bold text-gold tracking-widest uppercase font-[Verdana] bg-white/5 px-2.5 py-0.5 rounded border border-gold/15">
-                  {lang === 'ar' ? 'مستودع العيادة والمخزون' : 'CLINIC WAREHOUSE & STOCK'}
+                  {lang === 'ar' ? 'بوابة البيع المباشر والسريع' : 'QUICK SELL DIRECT STATION'}
                 </span>
                 <span className="text-[9px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded font-[Verdana] animate-pulse tracking-wide">
                   {lang === 'ar' ? 'نشط ومحدث' : 'ACTIVE CONSOLE'}
                 </span>
               </div>
               <h3 className="text-base sm:text-lg font-serif font-bold text-white mt-1 group-hover:text-gold transition-colors tracking-tight">
-                {lang === 'ar' ? 'لوحة مراقبة وإدارة المخزن والمستودع' : 'Launch Storage & Inventory Workspace'}
+                {lang === 'ar' ? 'بوابة المبيعات المباشرة السريعة لمختلف السلع' : 'Open Quick Sell & Direct Checkout Hub'}
               </h3>
               <p className="text-xs text-white/70 max-w-xl font-sans leading-relaxed mt-0.5">
                 {lang === 'ar' 
-                  ? 'راقب مستويات توفر النظارات الجاهزة والعدسات، تتبع النواقص، مستويات إعادة الطلب، وتكاليف عقود المجهزين.' 
-                  : 'Monitor optical stocks, contact lenses, ready spectacles or frame item quantities, and track active procurement from suppliers.'}
+                  ? 'قم ببيع إطارات القراءة الجاهزة، مناديل تنظيف العدسات، بخاخ المعقم، ومختلف مستلزمات البصريات بشكل مباشر وسريع.' 
+                  : 'Instantly sell generic reading frames, lens wipes, sanitizing sprays, or other miscellaneous optical accessories with automatic stock checking.'}
               </p>
             </div>
           </div>
           
-          <div className="flex items-center gap-3 self-stretch sm:self-auto justify-end shrink-0">
-            <span className="text-xs font-[Verdana] font-bold text-gold bg-white/5 border border-gold/30 rounded-xl px-4 py-2 hover:bg-gold hover:text-ink transition-all hidden sm:inline-block">
-              {lang === 'ar' ? 'افتح جرد المخزن' : 'Browse Inventory'}
-            </span>
-            <div className="w-10 h-10 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-gold group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 duration-300 shrink-0">
-              <ArrowUpRight size={20} className={lang === 'ar' ? '-scale-x-100' : ''} />
-            </div>
+          <div className="flex items-center gap-3 self-stretch sm:self-auto justify-end shrink-0 select-none">
+            <button 
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsQuickSellOpen(true);
+              }}
+              className="text-xs font-[Verdana] font-bold text-gold bg-gold/10 border border-gold/40 hover:bg-gold hover:text-ink hover:border-gold rounded-xl px-4 py-2 transition-all cursor-pointer inline-block shadow-sm"
+            >
+              {lang === 'ar' ? 'البوابة السريعة للمبيعات المباشرة (Quick Sell)' : 'Quick Sell / Retail Checkout'}
+            </button>
+            <button 
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsQuickSellOpen(true);
+              }}
+              className="w-10 h-10 rounded-full bg-gold/15 border border-gold/30 hover:bg-gold hover:text-ink md:group-hover:scale-105 flex items-center justify-center text-gold cursor-pointer transition-all shrink-0 shadow-sm"
+              title={lang === 'ar' ? 'بيع سريع مباشر' : 'Fast-track Direct Sale'}
+            >
+              <ShoppingCart size={17} className="stroke-[2.5]" />
+            </button>
           </div>
         </div>
       </motion.div>
@@ -503,6 +665,11 @@ export function Dashboard() {
           </button>
         </motion.div>
       </div>
+
+      <QuickSellModal 
+        isOpen={isQuickSellOpen} 
+        onClose={() => setIsQuickSellOpen(false)} 
+      />
     </div>
   );
 }

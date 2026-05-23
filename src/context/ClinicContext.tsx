@@ -279,11 +279,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
         console.error("Error loading lenses:", e);
       }
     }
-    return [
-      { id: "1", lens_type: "Single Vision", material: "Plastic (CR-39)", coating: "Anti-Reflective Filter", sphere: -1.5, cylinder: -0.5, quantity: 15, min_stock: 4, cost_price: 5000, sell_price: 15000 },
-      { id: "2", lens_type: "Bifocal", material: "Polycarbonate", coating: "Clear", sphere: +2.0, cylinder: 0, quantity: 2, min_stock: 5, cost_price: 10000, sell_price: 25000 },
-      { id: "3", lens_type: "Single Vision", material: "Plastic (CR-39)", coating: "Blue Control", sphere: -0.5, cylinder: -1.25, quantity: 0, min_stock: 2, cost_price: 8000, sell_price: 20000 },
-    ];
+    return [];
   });
 
   const [frames, setFrames] = useState<import("../types").FrameItem[]>(() => {
@@ -295,11 +291,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
         console.error("Error loading frames:", e);
       }
     }
-    return [
-      { id: "1", brand: "Ray-Ban", model: "Wayfarer Classic", color: "Black", type: "Full Rim", material: "Acetate", shape: "Square", quantity: 5, min_stock: 2, cost_price: 60000, sell_price: 150000 },
-      { id: "2", brand: "Oakley", model: "Holbrook", color: "Matte Black", type: "Full Rim", material: "Plastic", shape: "Rectangle", quantity: 3, min_stock: 3, cost_price: 45000, sell_price: 110000 },
-      { id: "3", brand: "Gucci", model: "GG0012S", color: "Havana", type: "Full Rim", material: "Acetate", shape: "Round", quantity: 1, min_stock: 2, cost_price: 150000, sell_price: 350000 }
-    ];
+    return [];
   });
 
   useEffect(() => {
@@ -311,10 +303,28 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   }, [frames]);
 
   useEffect(() => {
-    if (patients.length > 0) {
+    if (!isLoading) {
       localStorage.setItem("noor_patients", JSON.stringify(patients));
     }
-  }, [patients]);
+  }, [patients, isLoading]);
+
+  useEffect(() => {
+    // Clear old mock/hardcoded data to keep the database fully clean and dynamic
+    const hasClearedOldMocks = localStorage.getItem("noor_wiped_legacy_mocks_v4");
+    if (!hasClearedOldMocks) {
+      localStorage.removeItem("noor_patients");
+      localStorage.removeItem("noor_expenses");
+      localStorage.removeItem("noor_capital");
+      localStorage.removeItem("noor_prescriptions");
+      localStorage.removeItem("noor_audit_logs");
+      localStorage.removeItem("noor_lenses");
+      localStorage.removeItem("noor_frames");
+      setLenses([]);
+      setFrames([]);
+      setPatients([]);
+      localStorage.setItem("noor_wiped_legacy_mocks_v4", "true");
+    }
+  }, []);
 
   useEffect(() => {
     // Simulate network delay for fetching initial data
@@ -329,51 +339,11 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
           console.error("Error loading patients from local storage", err);
         }
       }
-      const defaults = [
-        { 
-          id: "1", 
-          full_name: "Ali Mohammed", 
-          phone: "07712345678", 
-          age: 34, 
-          last_visit: "2026-05-12", 
-          outstanding: 25000, 
-          gender: "male",
-          visits: [
-            { id: "v1", patient_id: "1", visit_date: "2026-05-12", diagnosis: "Myopia -1.50 OS/OD", total_amount: 50000, amount_paid: 25000, remaining: 25000 },
-            { id: "v2", patient_id: "1", visit_date: "2025-11-20", diagnosis: "Initial checkup", total_amount: 15000, amount_paid: 15000, remaining: 0 },
-          ] as any[]
-        },
-        { 
-          id: "2", 
-          full_name: "Sarah Ahmed", 
-          phone: "07801234567", 
-          age: 28, 
-          last_visit: "2026-05-10", 
-          outstanding: 0, 
-          gender: "female",
-          visits: [
-            { id: "v3", patient_id: "2", visit_date: "2026-05-10", diagnosis: "Contact lenses fit", total_amount: 75000, amount_paid: 75000, remaining: 0 },
-          ] as any[]
-        },
-        { 
-          id: "3", 
-          full_name: "Zaid Hassan", 
-          phone: "07509876543", 
-          age: 45, 
-          last_visit: "2026-04-28", 
-          outstanding: 120000, 
-          gender: "male",
-          visits: [
-            { id: "v4", patient_id: "3", visit_date: "2026-04-28", diagnosis: "Progressive lenses needed", total_amount: 250000, amount_paid: 130000, remaining: 120000 },
-          ] as any[]
-        },
-        { id: "4", full_name: "Layla Khalid", phone: "07701122334", age: 19, last_visit: "2026-05-15", outstanding: 0, gender: "female", visits: [] as any[] },
-        { id: "5", full_name: "Omar Sharif", phone: "07812233445", age: 52, last_visit: "2026-05-01", outstanding: 15000, gender: "male", visits: [] as any[] },
-      ];
+      const defaults: any[] = [];
       setPatients(defaults);
       localStorage.setItem("noor_patients", JSON.stringify(defaults));
       setIsLoading(false);
-    }, 1500); // 1.5s delay to show skeleton loaders
+    }, 1200); // 1.2s delay to show skeleton loaders
 
     return () => clearTimeout(timer);
   }, []);

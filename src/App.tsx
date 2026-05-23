@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Menu } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
@@ -23,12 +23,134 @@ import { ClinicProvider, useClinic } from "./context/ClinicContext";
 import { cn } from "./lib/utils";
 import { useScrollLock } from "./hooks/useScrollLock";
 
+function useInteractionLock() {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if any modal is open.
+      const hasModal = document.querySelector('.fixed.inset-0, .fixed.inset-px') !== null || document.body.classList.contains('modal-open');
+      if (!hasModal) return;
+
+      // Trap Tab & Shift+Tab focus inside the topmost modal
+      if (e.key === "Tab") {
+        const modals = Array.from(document.querySelectorAll('.fixed.inset-0, .fixed.inset-px'));
+        if (modals.length === 0) return;
+
+        // Get the active (topmost) modal wrapper
+        const activeModal = modals[modals.length - 1] as HTMLElement;
+
+        // Find focusable query selectors
+        const focusableElements = activeModal.querySelectorAll(
+          'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, *[tabindex], *[contenteditable]'
+        );
+        
+        const focusables = Array.from(focusableElements).filter(el => {
+          const tabIndex = el.getAttribute('tabindex');
+          if (tabIndex && parseInt(tabIndex) < 0) return false;
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }) as HTMLElement[];
+
+        if (focusables.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const firstElement = focusables[0];
+        const lastElement = focusables[focusables.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement || !activeModal.contains(document.activeElement)) {
+            lastElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement || !activeModal.contains(document.activeElement)) {
+            firstElement.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
+    const handleFocus = (e: FocusEvent) => {
+      const hasModal = document.querySelector('.fixed.inset-0, .fixed.inset-px') !== null || document.body.classList.contains('modal-open');
+      if (!hasModal) return;
+
+      const modals = Array.from(document.querySelectorAll('.fixed.inset-0, .fixed.inset-px'));
+      if (modals.length === 0) return;
+      const activeModal = modals[modals.length - 1] as HTMLElement;
+
+      if (e.target && !activeModal.contains(e.target as Node)) {
+        const focusableElements = activeModal.querySelectorAll(
+          'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, *[tabindex], *[contenteditable]'
+        );
+        const focusable = Array.from(focusableElements).find(el => {
+          const tabIndex = el.getAttribute('tabindex');
+          if (tabIndex && parseInt(tabIndex) < 0) return false;
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }) as HTMLElement;
+
+        if (focusable) {
+          focusable.focus();
+        } else {
+          activeModal.focus();
+        }
+        e.preventDefault();
+      }
+    };
+
+    // Prevent wheel/scroll on the layer below
+    const handleWheel = (e: WheelEvent) => {
+      const hasModal = document.querySelector('.fixed.inset-0, .fixed.inset-px') !== null || document.body.classList.contains('modal-open');
+      if (!hasModal) return;
+
+      const modals = Array.from(document.querySelectorAll('.fixed.inset-0, .fixed.inset-px'));
+      if (modals.length === 0) return;
+      const activeModal = modals[modals.length - 1] as HTMLElement;
+
+      // Target must be inside the active modal, otherwise prevent scroll
+      const modalBox = activeModal.querySelector('.bg-white, [role="dialog"], form');
+      if (modalBox && !modalBox.contains(e.target as Node)) {
+        e.preventDefault();
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const hasModal = document.querySelector('.fixed.inset-0, .fixed.inset-px') !== null || document.body.classList.contains('modal-open');
+      if (!hasModal) return;
+
+      const modals = Array.from(document.querySelectorAll('.fixed.inset-0, .fixed.inset-px'));
+      if (modals.length === 0) return;
+      const activeModal = modals[modals.length - 1] as HTMLElement;
+
+      const modalBox = activeModal.querySelector('.bg-white, [role="dialog"], form');
+      if (modalBox && !modalBox.contains(e.target as Node)) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("focus", handleFocus, true);
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("focus", handleFocus, true);
+      window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, []);
+}
+
 function AppContent() {
   const { user, currentSection, impersonatedClinic, setImpersonatedClinic, lang } = useClinic();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useScrollLock(mobileMenuOpen);
+  useInteractionLock();
 
   if (!user) {
     return <Auth />;

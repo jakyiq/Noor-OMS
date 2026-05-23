@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { UserPlus, Search, MoreHorizontal, Phone, Clock, FileText, ChevronRight, ChevronDown, Filter, ArrowLeft, Calendar, ClipboardList, Wallet, Plus, X, Trash2, Printer, History, ArrowDown, ArrowUp, Pencil, Banknote, CalendarClock, AlertTriangle } from "lucide-react";
 import { useClinic } from "../context/ClinicContext";
-import { formatIQD, cn } from "../lib/utils";
+import { formatIQD, cn, cleanNameInput, cleanNumberOnlyInput, cleanPhoneInput } from "../lib/utils";
 import { motion } from "motion/react";
 import { subDays, isAfter, parseISO } from "date-fns";
 import { useScrollLock } from "../hooks/useScrollLock";
@@ -78,6 +78,7 @@ export function Patients() {
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
   const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
   const [visitToEdit, setVisitToEdit] = useState<any>(null);
+  const [isCloning, setIsCloning] = useState(false);
   const [topUpPatientId, setTopUpPatientId] = useState<string | null>(null);
   const [topUpAmount, setTopUpAmount] = useState("");
   const [deletePatientConfirm, setDeletePatientConfirm] = useState<any | null>(null);
@@ -120,8 +121,8 @@ export function Patients() {
 
   const filteredPatients = useMemo(() => {
     let result = patients.filter(p => {
-      // Exclude direct POS walk-ins if configured in settings
-      if (clinic?.exclude_pos_from_patient_menu && p.id === "walkin_retail") {
+      // Exclude walk-in retail POS sales from appearing in Patient directory or dashboard
+      if (p.id === "walkin_retail") {
         return false;
       }
 
@@ -235,6 +236,53 @@ export function Patients() {
   const confirmDeletePatient = () => {
     if (!deletePatientConfirm) return;
     if (!canEditPatients) return;
+    
+    // Return frames and lenses of all visits back to stock upon patient deletion
+    const patientToDelete = patients.find(p => p.id === deletePatientConfirm.id);
+    if (patientToDelete) {
+      const visits = patientToDelete.visits || [];
+      const returnedLenses: Record<string, number> = {};
+      const returnedFrames: Record<string, number> = {};
+
+      visits.forEach((v: any) => {
+        if (v.rawFormData) {
+          const odLensId = v.rawFormData.matchedOdLensId;
+          const osLensId = v.rawFormData.matchedOsLensId;
+          const frameId = v.rawFormData.matchedFrameId;
+
+          if (odLensId) {
+            returnedLenses[odLensId] = (returnedLenses[odLensId] || 0) + 1;
+          }
+          if (osLensId) {
+            returnedLenses[osLensId] = (returnedLenses[osLensId] || 0) + 1;
+          }
+          if (frameId) {
+            returnedFrames[frameId] = (returnedFrames[frameId] || 0) + 1;
+          }
+        }
+      });
+
+      // Update lenses stock state
+      if (Object.keys(returnedLenses).length > 0) {
+        setLenses(prev => prev.map(l => {
+          if (returnedLenses[l.id]) {
+            return { ...l, quantity: l.quantity + returnedLenses[l.id] };
+          }
+          return l;
+        }));
+      }
+
+      // Update frames stock state
+      if (Object.keys(returnedFrames).length > 0) {
+        setFrames(prev => prev.map(f => {
+          if (returnedFrames[f.id]) {
+            return { ...f, quantity: f.quantity + returnedFrames[f.id] };
+          }
+          return f;
+        }));
+      }
+    }
+
     setPatients(patients.filter(p => p.id !== deletePatientConfirm.id));
     logAction({
       action: "delete",
@@ -261,6 +309,24 @@ export function Patients() {
   const confirmDeleteVisit = () => {
     if (!selectedPatient || !deleteVisitConfirmId) return;
     const visit = selectedPatient.visits?.find((v: any) => v.id === deleteVisitConfirmId);
+    
+    // Return frames and lenses back to stock upon deleting an individual visit
+    if (visit && visit.rawFormData) {
+      const odLensId = visit.rawFormData.matchedOdLensId;
+      const osLensId = visit.rawFormData.matchedOsLensId;
+      const frameId = visit.rawFormData.matchedFrameId;
+
+      if (odLensId) {
+        setLenses(prev => prev.map(l => l.id === odLensId ? { ...l, quantity: l.quantity + 1 } : l));
+      }
+      if (osLensId) {
+        setLenses(prev => prev.map(l => l.id === osLensId ? { ...l, quantity: l.quantity + 1 } : l));
+      }
+      if (frameId) {
+        setFrames(prev => prev.map(f => f.id === frameId ? { ...f, quantity: f.quantity + 1 } : f));
+      }
+    }
+
     setPatients(patients.map(p => {
       if (p.id === selectedPatient.id) {
         return {
@@ -304,9 +370,28 @@ export function Patients() {
           const v = sortedVisits[i];
           if (v.remaining > 0) {
             const deduction = Math.min(v.remaining, remainingTopUp);
+            
+            // Initialize payment history with the original amount_paid if it is empty
+            const initialPaid = v.amount_paid;
+            v.payment_history = v.payment_history || [];
+            if (v.payment_history.length === 0 && initialPaid > 0) {
+              v.payment_history.push({
+                id: "pay_init_" + Math.random().toString(36).substr(2, 9),
+                date: v.visit_date,
+                amount: initialPaid
+              });
+            }
+
             v.remaining -= deduction;
             v.amount_paid += deduction;
             remainingTopUp -= deduction;
+
+            // Record this top-up payment in the history on current date
+            v.payment_history.push({
+              id: "pay_topup_" + Math.random().toString(36).substr(2, 9),
+              date: new Date().toISOString().split("T")[0],
+              amount: deduction
+            });
           }
         }
         
@@ -421,6 +506,7 @@ export function Patients() {
     if (!selectedPatientId || !selectedPatient) return;
     setEditingVisitId(null);
     setVisitToEdit(null);
+    setIsCloning(false);
     setIsNewVisitModalOpen(true);
   };
 
@@ -431,6 +517,15 @@ export function Patients() {
     }
     setEditingVisitId(visit.id);
     setVisitToEdit(visit);
+    setIsCloning(false);
+    setIsNewVisitModalOpen(true);
+  };
+
+  const handleCopyRxToNewVisit = (visit: any) => {
+    if (!selectedPatientId || !selectedPatient) return;
+    setEditingVisitId(null); // Important: New visit
+    setVisitToEdit(visit); // Pre-fill with old visit
+    setIsCloning(true); // Special clone flag
     setIsNewVisitModalOpen(true);
   };
 
@@ -444,7 +539,7 @@ export function Patients() {
     const totalSelectedCost = (visitData.includeFrame ? fPrice : 0) + lPrice + cFee;
     const paid = parseFloat(visitData.paidAmount) || 0;
 
-    const baseDate = visitToEdit?.visit_date || new Date().toISOString().split('T')[0];
+    const baseDate = editingVisitId ? (visitToEdit?.visit_date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
     let nextVisitStr = undefined;
     
     if (visitData.checkupDone) {
@@ -453,7 +548,7 @@ export function Patients() {
       nextVisitStr = baseDateObj.toISOString().split('T')[0];
     }
 
-    const baseDiagnosis = visitToEdit?.diagnosis ? visitToEdit.diagnosis.split('\n\n--- Diagnosis ---')[0] : (lang === 'ar' ? 'بطاقة فحص جديدة' : 'New Prescription');
+    const baseDiagnosis = (editingVisitId && visitToEdit?.diagnosis) ? visitToEdit.diagnosis.split('\n\n--- Diagnosis ---')[0] : (lang === 'ar' ? 'بطاقة فحص جديدة' : 'New Prescription');
     
     const rxDataForDiagnosis = {
       od: visitData.eyesCount !== 'os' ? visitData.od : null,
@@ -477,7 +572,7 @@ export function Patients() {
       if (match) itemCost += (match.cost_price || 0);
     }
 
-    const newVisitObj = {
+    const newVisitObj: any = {
       id: editingVisitId || Math.random().toString(36).substr(2, 9),
       patient_id: selectedPatientId,
       visit_date: baseDate,
@@ -487,6 +582,11 @@ export function Patients() {
       amount_paid: paid,
       remaining: Math.max(0, totalSelectedCost - paid),
       visit_cost: itemCost, // Records cost of goods sold (COGS)
+      payment_history: paid > 0 ? [{
+        id: "pay_init_" + Math.random().toString(36).substr(2, 9),
+        date: baseDate,
+        amount: paid
+      }] : [],
       rawFormData: visitData,
       rxData: {
         od: visitData.eyesCount !== 'os' ? {
@@ -525,6 +625,19 @@ export function Patients() {
         if (editingVisitId) {
           const oldVisit = p.visits?.find((v: any) => v.id === editingVisitId);
           const diff = oldVisit ? newVisitObj.remaining - oldVisit.remaining : 0;
+          
+          // Merge old payment history if exists, or recreate if amount paid changed
+          const oldHistory = oldVisit?.payment_history || [];
+          if (oldHistory.length > 0) {
+            newVisitObj.payment_history = oldHistory;
+          } else if (paid > 0) {
+            newVisitObj.payment_history = [{
+              id: "pay_init_" + Math.random().toString(36).substr(2, 9),
+              date: baseDate,
+              amount: paid
+            }];
+          }
+
           return {
             ...p,
             outstanding: p.outstanding + diff,
@@ -861,7 +974,7 @@ export function Patients() {
                         </div>
                      </div>
                      
-                     <div className="mt-4 pt-4 border-t border-[#d0e3ec] flex justify-end gap-2 text-sm">
+                     <div className="mt-4 pt-4 border-t border-[#d0e3ec] flex flex-wrap justify-end gap-2 text-sm">
                        <button 
                          onClick={(e) => { e.stopPropagation(); handleDeleteVisit(visit.id); }}
                          className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
@@ -943,10 +1056,12 @@ export function Patients() {
           setIsNewVisitModalOpen(false);
           setEditingVisitId(null);
           setVisitToEdit(null);
+          setIsCloning(false);
         }} 
         onSave={handleSaveNewVisit} 
         lang={lang} 
         visitToEdit={visitToEdit}
+        isCloning={isCloning}
       />
 
       {/* Old Prescription Modal */}
@@ -1405,7 +1520,7 @@ export function Patients() {
                     className="input-field w-full"
                     placeholder="Ali Mohammed"
                     value={formData.full_name}
-                    onChange={e => setFormData({...formData, full_name: e.target.value})}
+                    onChange={e => setFormData({...formData, full_name: cleanNameInput(e.target.value)})}
                   />
                 </div>
                 
@@ -1417,18 +1532,18 @@ export function Patients() {
                     className="input-field w-full font-mono text-sm"
                     placeholder="077XXXXXXXX"
                     value={formData.phone}
-                    onChange={e => setFormData({...formData, phone: e.target.value})}
+                    onChange={e => setFormData({...formData, phone: cleanPhoneInput(e.target.value)})}
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-ink-light uppercase tracking-widest px-1">{t("age")}</label>
                   <input 
-                    type="number" 
+                    type="text" 
                     className="input-field w-full"
                     placeholder="30"
                     value={formData.age}
-                    onChange={e => setFormData({...formData, age: e.target.value})}
+                    onChange={e => setFormData({...formData, age: cleanNumberOnlyInput(e.target.value)})}
                   />
                 </div>
 
@@ -1467,11 +1582,15 @@ export function Patients() {
 
       {/* Delete Patient Confirmation Modal (Detail View) */}
       {deletePatientConfirm && (
-        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+        <div 
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setDeletePatientConfirm(null)}
+        >
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1513,11 +1632,15 @@ export function Patients() {
 
       {/* Delete Visit Confirmation Modal (Detail View) */}
       {deleteVisitConfirmId && (
-        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+        <div 
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setDeleteVisitConfirmId(null)}
+        >
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1618,7 +1741,7 @@ export function Patients() {
       {/* Header Area */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-ink mb-1">{t("patients")}</h1>
+          <h1 className="text-3xl font-serif font-bold text-ink mb-[10px] pl-0 ml-0 pr-0">{t("patients")}</h1>
           <p className="text-xs text-ink-light font-medium uppercase tracking-widest flex items-center gap-2">
             MANAGEMENT SYSTEM <span className="w-1 h-1 bg-cream-border rounded-full" /> {filteredPatients.length} MATCHING RECORDS
           </p>
@@ -1724,7 +1847,7 @@ export function Patients() {
                     className="input-field w-full"
                     placeholder="Ali Mohammed"
                     value={formData.full_name}
-                    onChange={e => setFormData({...formData, full_name: e.target.value})}
+                    onChange={e => setFormData({...formData, full_name: cleanNameInput(e.target.value)})}
                   />
                 </div>
                 
@@ -1736,18 +1859,18 @@ export function Patients() {
                     className="input-field w-full font-mono text-sm"
                     placeholder="077XXXXXXXX"
                     value={formData.phone}
-                    onChange={e => setFormData({...formData, phone: e.target.value})}
+                    onChange={e => setFormData({...formData, phone: cleanPhoneInput(e.target.value)})}
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-ink-light uppercase tracking-widest px-1">{t("age")}</label>
                   <input 
-                    type="number" 
+                    type="text" 
                     className="input-field w-full"
                     placeholder="30"
                     value={formData.age}
-                    onChange={e => setFormData({...formData, age: e.target.value})}
+                    onChange={e => setFormData({...formData, age: cleanNumberOnlyInput(e.target.value)})}
                   />
                 </div>
 
@@ -1982,11 +2105,15 @@ export function Patients() {
 
       {/* Delete Patient Confirmation Modal */}
       {deletePatientConfirm && (
-        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+        <div 
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setDeletePatientConfirm(null)}
+        >
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -2037,11 +2164,15 @@ export function Patients() {
 
       {/* Delete Visit Confirmation Modal */}
       {deleteVisitConfirmId && (
-        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+        <div 
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setDeleteVisitConfirmId(null)}
+        >
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">

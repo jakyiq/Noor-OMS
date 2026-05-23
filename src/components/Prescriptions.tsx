@@ -56,7 +56,7 @@ const getPresetLogoSvg = (presetId: string, theme: string) => {
 };
 
 export function Prescriptions() {
-  const { t, lang, logAction, clinic } = useClinic();
+  const { t, lang, logAction, clinic, patients } = useClinic();
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -71,40 +71,23 @@ export function Prescriptions() {
 
   useScrollLock(isModalOpen || !!deleteConfirmId);
 
-  // Mock Data
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([
-    { 
-      id: "pr1", 
-      patient_id: "1", 
-      date: "2024-05-12", 
-      prescriber: "Dr. Ahmed Ali", 
-      lens_type: "Single Vision", 
-      frame_details: "Ray-Ban RB2140",
-      od_sphere: "-1.50",
-      od_cylinder: "-0.50",
-      od_axis: "180",
-      os_sphere: "-1.25",
-      os_cylinder: "-0.75",
-      os_axis: "175",
-      pd: "64"
-    },
-    { 
-      id: "pr2", 
-      patient_id: "2", 
-      date: "2024-05-10", 
-      prescriber: "Dr. Ahmed Ali", 
-      lens_type: "Progressive", 
-      frame_details: "Oakley Holbrook",
-      od_sphere: "+1.00",
-      os_sphere: "+1.00",
-      pd: "62"
+  // Load subscriptions from local storage
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>(() => {
+    const saved = localStorage.getItem("noor_prescriptions");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (err) {
+        console.error("Error loading prescriptions from local storage", err);
+      }
     }
-  ]);
+    return [];
+  });
 
-  const [patients] = useState<Patient[]>([
-    { id: "1", full_name: "Ali Mohammed", phone: "07712345678", outstanding_remaining: 0, updated_at: "" },
-    { id: "2", full_name: "Sarah Ahmed", phone: "07801234567", outstanding_remaining: 0, updated_at: "" },
-  ]);
+  // Save prescriptions when they change
+  React.useEffect(() => {
+    localStorage.setItem("noor_prescriptions", JSON.stringify(prescriptions));
+  }, [prescriptions]);
 
   const [formData, setFormData] = useState({
     patient_id: "",
@@ -627,11 +610,15 @@ export function Prescriptions() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+        <div 
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setDeleteConfirmId(null)}
+        >
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">

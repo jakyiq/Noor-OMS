@@ -47,6 +47,12 @@ export interface Prescription {
   pd?: string;
 }
 
+export interface PaymentRecord {
+  id: string;
+  date: string;
+  amount: number;
+}
+
 export interface Visit {
   id: string;
   patient_id: string;
@@ -58,6 +64,8 @@ export interface Visit {
   remaining: number;
   lens_type?: string;
   frame_brand?: string;
+  payment_history?: PaymentRecord[];
+  rawFormData?: any;
   // ... other fields as seen in the user's JS
 }
 
@@ -119,6 +127,7 @@ export interface InventoryItem {
   cost_price?: number;
   supplier_id?: string;
   updated_at: string;
+  is_quick_sell?: boolean;
 }
 
 export interface Supplier {

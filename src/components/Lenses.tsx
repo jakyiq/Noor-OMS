@@ -95,6 +95,34 @@ export function Lenses() {
         cost_price: addLensData.cost_price,
         sell_price: addLensData.sell_price
       } : l));
+
+      // Log expense if quantity increased during edit
+      const qtyDiff = addLensData.quantity - editingLens.quantity;
+      if (qtyDiff > 0) {
+        const addedCost = qtyDiff * addLensData.cost_price;
+        if (addedCost > 0) {
+          let currentExps = [];
+          const savedExps = localStorage.getItem("noor_expenses");
+          if (savedExps) {
+            try {
+              currentExps = JSON.parse(savedExps);
+            } catch (err) {
+              currentExps = [];
+            }
+          }
+          const newExpense = {
+            id: "e_lens_edit_restock_" + Math.random().toString(36).substring(7),
+            description: lang === "ar"
+              ? `توريد وتعديل مخزون عدسة [${getLabel('type', addLensData.lens_type)} SPH: ${finalSph > 0 ? '+' : ''}${finalSph}] عدد إضافي ${qtyDiff}`
+              : `Restock via Edit: ${addLensData.lens_type} (SPH: ${finalSph > 0 ? '+' : ''}${finalSph}, Qty +${qtyDiff})`,
+            category: "lab" as const,
+            amount: addedCost,
+            date: new Date().toISOString().split("T")[0]
+          };
+          currentExps.unshift(newExpense);
+          localStorage.setItem("noor_expenses", JSON.stringify(currentExps));
+        }
+      }
     } else {
       setLenses(prev => [{
         id: Math.random().toString(36).substring(7),
@@ -108,6 +136,31 @@ export function Lenses() {
         cost_price: addLensData.cost_price,
         sell_price: addLensData.sell_price
       }, ...prev]);
+
+      // Log full initial purchase/procurement expense
+      const totalCost = Number(addLensData.quantity) * Number(addLensData.cost_price);
+      if (totalCost > 0) {
+        let currentExps = [];
+        const savedExps = localStorage.getItem("noor_expenses");
+        if (savedExps) {
+          try {
+            currentExps = JSON.parse(savedExps);
+          } catch (err) {
+            currentExps = [];
+          }
+        }
+        const newExpense = {
+          id: "e_lens_creation_" + Math.random().toString(36).substring(7),
+          description: lang === "ar"
+            ? `توريد مخزون عدسة جديدة [${getLabel('type', addLensData.lens_type)} SPH: ${finalSph > 0 ? '+' : ''}${finalSph}] عدد ${addLensData.quantity}`
+            : `Initial Lens Purchase: ${addLensData.lens_type} (SPH: ${finalSph > 0 ? '+' : ''}${finalSph}, Qty x${addLensData.quantity})`,
+          category: "lab" as const,
+          amount: totalCost,
+          date: new Date().toISOString().split("T")[0]
+        };
+        currentExps.unshift(newExpense);
+        localStorage.setItem("noor_expenses", JSON.stringify(currentExps));
+      }
     }
     setIsAddEditOpen(false);
   };
@@ -184,7 +237,7 @@ export function Lenses() {
 
   const confirmDelete = () => {
     if (!deleteConfirmId) return;
-    setLenses(lenses.filter(x => x.id !== deleteConfirmId));
+    setLenses(prev => prev.filter(x => x.id !== deleteConfirmId));
     setDeleteConfirmId(null);
   };
 
@@ -257,16 +310,6 @@ export function Lenses() {
           </p>
         </div>
         <div className="flex gap-2">
-          {lenses.length > 0 && (
-            <button 
-              onClick={() => setIsFlushConfirmOpen(true)} 
-              className="px-4 py-3 flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 font-bold hover:bg-rose-100 hover:text-rose-750 transition-all shadow-sm"
-              title={lang === "ar" ? "حذف جميع العدسات الحالية" : "Delete all current lenses"}
-            >
-              <Trash2 size={16} />
-              <span className="hidden md:inline">{lang === "ar" ? "تفريغ المستودع" : "Clear Catalog"}</span>
-            </button>
-          )}
           <button onClick={() => {
             setWizTypes(lensCatalog?.type?.[0] ? [lensCatalog.type[0].value] : []);
             setWizMaterials(lensCatalog?.material?.[0] ? [lensCatalog.material[0].value] : []);
@@ -436,9 +479,9 @@ export function Lenses() {
           <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">SPH</div>
           <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">CYL</div>
           <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">{t("qty")}</div>
-          <div className="col-span-2 text-[10px] font-bold text-ink-light uppercase tracking-widest">{lang === 'ar' ? 'التكلفة / البيع' : 'Cost & Price'}</div>
+          <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">{lang === 'ar' ? 'التكلفة / البيع' : 'Cost & Price'}</div>
           <div className="col-span-1 text-[10px] font-bold text-ink-light uppercase tracking-widest">Status</div>
-          <div className="col-span-1 text-end"></div>
+          <div className="col-span-2 text-end"></div>
         </div>
 
         <div className="divide-y divide-cream-border">
@@ -475,7 +518,7 @@ export function Lenses() {
                   <span className="lg:hidden text-[10px] uppercase text-ink-light tracking-widest font-sans select-none">{t("qty")}</span>
                   <span>{l.quantity}</span>
                 </div>
-                <div className="col-span-2 w-full flex justify-between lg:block items-center">
+                <div className="col-span-1 w-full flex justify-between lg:block items-center">
                   <span className="lg:hidden text-[10px] uppercase text-ink-light tracking-widest font-sans select-none">{lang === 'ar' ? 'التكلفة / البيع' : 'Cost & Price'}</span>
                   <div>
                     <div className="text-sm font-bold font-mono text-ink">{formatIQD(l.sell_price || 0)}</div>
@@ -492,7 +535,7 @@ export function Lenses() {
                     {isOut ? t("out") : isLow ? t("low") : 'OK'}
                   </span>
                 </div>
-                <div className="col-span-1 flex w-full lg:w-auto justify-end gap-2 border-t border-cream-border lg:border-none pt-3 lg:pt-0 mt-2 lg:mt-0">
+                <div className="col-span-2 flex w-full lg:w-auto justify-end gap-2 border-t border-cream-border lg:border-none pt-3 lg:pt-0 mt-2 lg:mt-0">
                   <button onClick={() => setRestockLens(l)} className="flex-1 lg:flex-none p-2 text-ink-light hover:text-burgundy hover:bg-cream rounded-lg transition-colors border border-transparent hover:border-cream-border flex items-center justify-center" title="Restock">
                     <Plus size={16} />
                   </button>
@@ -537,8 +580,14 @@ export function Lenses() {
       
       {/* Wizard Modal mock */}
       {isWizardOpen && (
-        <div className="fixed inset-0 z-[9000] flex items-center justify-center sm:p-4 lg:p-8 bg-ink/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white sm:rounded-3xl lg:rounded-[2rem] w-full h-full sm:h-auto max-w-[72rem] shadow-2xl flex flex-col max-h-[100dvh] sm:max-h-[95vh] overflow-hidden">
+        <div 
+          className="fixed inset-0 z-[9000] flex items-center justify-center sm:p-4 lg:p-8 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setIsWizardOpen(false)}
+        >
+          <div 
+            className="bg-white sm:rounded-3xl lg:rounded-[2rem] w-full h-full sm:h-auto max-w-[72rem] shadow-2xl flex flex-col max-h-[100dvh] sm:max-h-[95vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="flex justify-between items-center px-4 py-4 md:px-5 lg:px-8 lg:py-6 border-b border-cream-border bg-gradient-to-r from-cream-light to-white shrink-0">
               <div className="flex items-center gap-3 lg:gap-4">
@@ -757,14 +806,29 @@ export function Lenses() {
                           <motion.div 
                             initial={{ opacity: 0, y: 4 }} 
                             animate={{ opacity: 1, y: 0 }}
-                            className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-xl leading-normal flex items-start gap-2.5 animate-in fade-in"
+                            className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-xl leading-normal flex flex-col gap-3 animate-in fade-in"
                           >
-                            <AlertTriangle size={16} className="text-rose-600 shrink-0 mt-0.5" />
-                            <div className="text-[10px] text-rose-800">
-                              <span className="font-bold uppercase tracking-wider block mb-0.5">{lang === 'ar' ? 'تحذير تدمير البيانات' : 'Warning: High Impact Operation'}</span>
-                              {lang === 'ar' 
-                                ? 'سيتم مسح جميع سجلات العدسات المخزنة في النظام نهائياً بمجرد نقر زر إنتاج العدسات.'
-                                : 'All currently cataloged lenses will be deleted permanently when you commit. Unsaved changes will be lost.'}
+                            <div className="flex items-start gap-2.5">
+                              <AlertTriangle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                              <div className="text-[10px] text-rose-800">
+                                <span className="font-bold uppercase tracking-wider block mb-0.5">{lang === 'ar' ? 'تحذير تدمير البيانات' : 'Warning: High Impact Operation'}</span>
+                                {lang === 'ar' 
+                                  ? 'سيتم مسح جميع سجلات العدسات المخزنة في النظام نهائياً بمجرد نقر زر إنتاج العدسات.'
+                                  : 'All currently cataloged lenses will be deleted permanently when you commit. Unsaved changes will be lost.'}
+                              </div>
+                            </div>
+                            <div className="border-t border-rose-200/50 pt-2 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsWizardOpen(false);
+                                  setIsFlushConfirmOpen(true);
+                                }}
+                                className="px-3 py-1.5 text-[10px] sm:text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg flex items-center gap-1.5 transition-colors shadow-md shadow-rose-600/10"
+                              >
+                                <Trash2 size={12} />
+                                {lang === 'ar' ? 'مسح وتفريغ المستودع فوراً' : 'Wipe Catalog Completely Now'}
+                              </button>
                             </div>
                           </motion.div>
                         )}
@@ -785,12 +849,32 @@ export function Lenses() {
                 )}
               </div>
               <div className="flex flex-row gap-2 sm:gap-3 w-full md:w-auto">
-                <button onClick={() => setIsWizardOpen(false)} className="flex-1 md:flex-none py-2.5 lg:py-3 px-4 lg:px-6 text-xs sm:text-sm whitespace-nowrap font-bold text-ink-mid hover:text-ink bg-cream rounded-xl hover:bg-cream-dark transition-colors border border-cream-border">Cancel</button>
+                <button 
+                  onClick={() => setIsWizardOpen(false)} 
+                  className="flex-1 md:flex-none py-2.5 lg:py-3 px-4 lg:px-6 text-xs sm:text-sm whitespace-nowrap font-bold text-ink-mid hover:text-ink bg-cream rounded-xl hover:bg-cream-dark transition-colors border border-cream-border"
+                >
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
                 <button 
                   onClick={handleWizardSubmit} 
-                  className="flex-1 md:flex-none py-2.5 lg:py-3 px-4 lg:px-8 text-xs sm:text-sm whitespace-nowrap font-bold text-white bg-gradient-to-r from-burgundy to-[#5A0015] hover:from-[#5A0015] hover:to-[#400000] rounded-xl shadow-lg shadow-burgundy/30 transition-all flex flex-row items-center justify-center gap-2 group"
+                  className={cn(
+                    "flex-1 md:flex-none py-2.5 lg:py-3 px-4 lg:px-8 text-xs sm:text-sm whitespace-nowrap font-bold text-white transition-all flex flex-row items-center justify-center gap-2 group rounded-xl shadow-lg",
+                    wizClearExisting 
+                      ? "bg-gradient-to-r from-rose-600 to-[#990011] hover:from-rose-700 hover:to-[#77000d] shadow-rose-600/30 animate-pulse"
+                      : "bg-gradient-to-r from-burgundy to-[#5A0015] hover:from-[#5A0015] hover:to-[#400000] shadow-burgundy/30"
+                  )}
                 >
-                  <Zap size={16} className="text-white drop-shadow-sm group-hover:scale-110 transition-transform" /> Generate Lenses
+                  {wizClearExisting ? (
+                    <>
+                      <Trash2 size={16} className="text-white drop-shadow-sm group-hover:scale-110 transition-transform" />
+                      {lang === 'ar' ? 'تأكيد الحذف وإعادة التوليد' : 'Confirm Deletion & Rebuild'}
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={16} className="text-white drop-shadow-sm group-hover:scale-110 transition-transform" />
+                      {lang === 'ar' ? 'توليد العدسات' : 'Generate Lenses'}
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -800,8 +884,14 @@ export function Lenses() {
 
       {/* Add/Edit Modal */}
       {isAddEditOpen && (
-        <div className="fixed inset-0 z-[9000] flex items-center justify-center sm:p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full h-full sm:h-auto max-w-[32rem] shadow-2xl flex flex-col max-h-[100dvh] sm:max-h-[90vh] overflow-hidden mt-auto sm:mt-0">
+        <div 
+          className="fixed inset-0 z-[9000] flex items-center justify-center sm:p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setIsAddEditOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-t-3xl sm:rounded-3xl w-full h-full sm:h-auto max-w-[32rem] shadow-2xl flex flex-col max-h-[100dvh] sm:max-h-[90vh] overflow-hidden mt-auto sm:mt-0"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="flex justify-between items-center px-4 py-4 md:px-6 border-b border-cream-border bg-gradient-to-r from-cream-light to-white shrink-0">
               <h2 className="text-xl font-serif font-bold text-ink">
@@ -914,6 +1004,31 @@ export function Lenses() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-widest font-bold text-ink-light mb-1.5 ml-1">
+                    {lang === 'ar' ? 'سعر التكلفة (د.ع)' : 'Cost Price (IQD)'}
+                  </label>
+                  <input 
+                    type="number" 
+                    value={addLensData.cost_price} 
+                    onChange={e => setAddLensData(prev => ({...prev, cost_price: parseInt(e.target.value) || 0}))} 
+                    className="input-field w-full text-center text-sm font-mono font-bold text-ink" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-widest font-bold text-ink-light mb-1.5 ml-1">
+                    {lang === 'ar' ? 'سعر البيع (د.ع)' : 'Selling Price (IQD)'}
+                  </label>
+                  <input 
+                    type="number" 
+                    value={addLensData.sell_price} 
+                    onChange={e => setAddLensData(prev => ({...prev, sell_price: parseInt(e.target.value) || 0}))} 
+                    className="input-field w-full text-center text-sm font-mono font-bold text-ink" 
+                  />
+                </div>
+              </div>
+
             </div>
 
             {/* Footer */}
@@ -931,11 +1046,15 @@ export function Lenses() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+        <div 
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setDeleteConfirmId(null)}
+        >
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative bg-white rounded-2xl shadow-xl w-full max-w-[21.6rem] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1065,11 +1184,15 @@ export function Lenses() {
 
       {/* Flush Confirmation Modal */}
       {isFlushConfirmOpen && (
-        <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in">
+        <div 
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setIsFlushConfirmOpen(false)}
+        >
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative bg-white rounded-2xl shadow-xl w-full max-w-[24rem] overflow-hidden opacity-100"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">

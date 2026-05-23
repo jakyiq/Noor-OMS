@@ -32,7 +32,9 @@ import {
   Printer,
   FileSpreadsheet,
   Lock,
-  Unlock
+  Unlock,
+  Edit2,
+  Key
 } from "lucide-react";
 import { 
   XAxis, 
@@ -64,7 +66,26 @@ interface CapitalEntry {
 }
 
 export function Reports() {
-  const { lang, patients, setPatients, lenses, frames, logAction, inventoryTrigger } = useClinic();
+  const { lang, patients, setPatients, lenses, frames, logAction, inventoryTrigger, user } = useClinic();
+
+  // Generate last 12 months for custom historical filtering
+  const historicalMonths = React.useMemo(() => {
+    const list = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const monthStr = String(month).padStart(2, "0");
+      const val = `${year}-${monthStr}`;
+      
+      const labelEn = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      const labelAr = d.toLocaleDateString("ar-EG", { month: "long", year: "numeric" });
+      
+      list.push({ val, labelEn, labelAr });
+    }
+    return list;
+  }, []);
   
   // State for operational expenses
   const [expenses, setExpenses] = useState<Expense[]>(() => {
@@ -76,12 +97,7 @@ export function Reports() {
         console.error("Error reading expenses from storage:", err);
       }
     }
-    return [
-      { id: "e1", description: "Optical Lens Laboratory Order", category: "lab", amount: 120000, date: "2026-05-18" },
-      { id: "e2", description: "Monthly Clinic Rent", category: "rent", amount: 450000, date: "2026-05-01" },
-      { id: "e3", description: "Receptionist Assistant Salary", category: "salary", amount: 300000, date: "2026-05-15" },
-      { id: "e4", description: "Water and Electricity Bill", category: "utilities", amount: 150000, date: "2026-05-10" }
-    ];
+    return [];
   });
 
   // State for business capital additions (Owner contributions / investments)
@@ -94,9 +110,7 @@ export function Reports() {
         console.error("Error reading capital from storage:", err);
       }
     }
-    return [
-      { id: "c1", source: "Dr. Al-Noor Initial Seed Capital", amount: 2500000, date: "2026-05-01" }
-    ];
+    return [];
   });
 
   // Active sub-tab in the left column ledger
@@ -119,9 +133,28 @@ export function Reports() {
   const [settlingPatientId, setSettlingPatientId] = useState<string | null>(null);
   const [settlementAmount, setSettlementAmount] = useState("");
 
+  // Secure Manual Ledger Override State
+  const [overrideExpense, setOverrideExpense] = useState<Expense | null>(null);
+  const [overrideDesc, setOverrideDesc] = useState("");
+  const [overrideCategory, setOverrideCategory] = useState<Expense["category"]>("other");
+  const [overrideAmount, setOverrideAmount] = useState("");
+  const [overrideDate, setOverrideDate] = useState("");
+  const [overridePinInput, setOverridePinInput] = useState("");
+  const [isOverridePinVerified, setIsOverridePinVerified] = useState(false);
+  const [overridePinError, setOverridePinError] = useState("");
+
+  const [overrideReason, setOverrideReason] = useState("");
+
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
-  const [dateFilter, setDateFilter] = useState<"all" | "month" | "month-last" | "year">("all");
+  const [dateFilter, setDateFilter] = useState<string>("all");
+  const [chartAggregation, setChartAggregation] = useState<"daily" | "weekly" | "monthly" | "custom">("monthly");
+  const [customRangeStart, setCustomRangeStart] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 2); // default to 2 months lookback
+    return d.toISOString().split("T")[0];
+  });
+  const [customRangeEnd, setCustomRangeEnd] = useState(() => new Date().toISOString().split("T")[0]);
   const [hoveredPieIndex, setHoveredPieIndex] = useState<number | null>(null);
 
   // Accountant Closing Audit state
@@ -153,7 +186,7 @@ export function Reports() {
   const [reopenReason, setReopenReason] = useState("");
   const [reopenError, setReopenError] = useState("");
 
-  useScrollLock(showAuditPanel || showReopenModal);
+  useScrollLock(showAuditPanel || showReopenModal || !!overrideExpense);
 
   const getPeriodLabel = () => {
     const now = new Date();
@@ -164,6 +197,10 @@ export function Reports() {
       return prevMonth.toLocaleString("en-US", { month: "long", year: "numeric" }); // e.g. "April 2026"
     } else if (dateFilter === "year") {
       return now.getFullYear().toString();
+    } else if (/^\d{4}-\d{2}$/.test(dateFilter)) {
+      const [year, month] = dateFilter.split("-").map(Number);
+      const d = new Date(year, month - 1, 1);
+      return d.toLocaleString("en-US", { month: "long", year: "numeric" });
     }
     return "all";
   };
@@ -257,6 +294,10 @@ export function Reports() {
         const d = new Date(c.date);
         return d.getFullYear() === currentYear;
       });
+    } else if (/^\d{4}-\d{2}$/.test(dateFilter)) {
+      filteredVisits = allVisits.filter(v => v.visit_date.startsWith(dateFilter));
+      filteredExpenses = expenses.filter(e => e.date.startsWith(dateFilter));
+      filteredCapital = capitalInjections.filter(c => c.date.startsWith(dateFilter));
     }
 
     return { filteredVisits, filteredExpenses, filteredCapital };
@@ -282,6 +323,14 @@ export function Reports() {
     
     let cost = 0;
     const raw = v.rawFormData || {};
+    
+    // Quick Sell / Retail POS direct cost
+    if (raw.is_quick_sell && Array.isArray(raw.items_sold)) {
+      raw.items_sold.forEach((item: any) => {
+        cost += (item.cost_price || 0) * (item.quantity || 1);
+      });
+      return cost;
+    }
     
     // Matched lenses cost
     if (raw.matchedOdLensId) {
@@ -475,6 +524,14 @@ export function Reports() {
 
   // Delete Operational Expense
   const handleDeleteExpense = (id: string, desc: string) => {
+    if (user?.role !== "super_admin") {
+      alert(lang === "ar"
+        ? "غير مصرح! فقط للمدير العام (super_admin) صلاحية حذف المصاريف المدونة."
+        : "Unauthorized: Only users with the 'super_admin' role can delete logged opex expenses."
+      );
+      return;
+    }
+
     const expItem = expenses.find(e => e.id === id);
     if (expItem && getIsPeriodLocked(expItem.date)) {
       alert(lang === "ar"
@@ -483,14 +540,25 @@ export function Reports() {
       );
       return;
     }
+
     if (confirm(lang === "ar" ? "هل أنت متأكد من حذف هذا المصروف؟" : "Are you sure you want to remove this expense record?")) {
+      const reason = prompt(
+        lang === "ar"
+          ? "أدخل سبب حذف أو إلغاء هذا المصروف لتوثيقه في سجل الرقابة والمتابعة:"
+          : "Enter the reason for deleting this opex expense to record in the secure compliance audit trail:"
+      );
+      if (!reason || !reason.trim()) {
+        alert(lang === "ar" ? "تم إلغاء العملية. سبب الحذف مطلوب!" : "Operation cancelled. Deletion reason is required!");
+        return;
+      }
+
       setExpenses(prev => prev.filter(e => e.id !== id));
       logAction({
         action: "delete",
         entity_type: "inventory",
         entity_id: id,
         entity_name: desc,
-        details: `Deleted expense record: ${desc}`
+        details: `Deleted expense record: "${desc}" (${expItem ? formatIQD(expItem.amount) : ""}) | Audit Deletion Reason: ${reason}`
       });
     }
   };
@@ -618,35 +686,118 @@ export function Reports() {
 
   // Prep Chart Data based on filtered visits, capital and expenses
   const getChartData = () => {
-    const dateMap: { [date: string]: { date: string; cashInflow: number; expenses: number } } = {};
-    
-    filteredVisits.forEach(v => {
-      const dStr = v.visit_date;
-      if (!dateMap[dStr]) {
-        dateMap[dStr] = { date: dStr, cashInflow: 0, expenses: 0 };
+    // 1. Gather all raw events
+    const rawEvents: { date: string; cashInflow: number; expenses: number }[] = [];
+
+    // Decide active datasets to aggregate
+    let visitsSource = filteredVisits;
+    let expensesSource = filteredExpenses;
+    let capitalSource = filteredCapital;
+
+    if (chartAggregation === "custom") {
+      // Aggregate across all clinical history and filter to custom date range
+      visitsSource = (patients.flatMap(p => p.visits || [])).filter(v => {
+        if (customRangeStart && v.visit_date < customRangeStart) return false;
+        if (customRangeEnd && v.visit_date > customRangeEnd) return false;
+        return true;
+      });
+      expensesSource = expenses.filter(e => {
+        if (customRangeStart && e.date < customRangeStart) return false;
+        if (customRangeEnd && e.date > customRangeEnd) return false;
+        return true;
+      });
+      capitalSource = capitalInjections.filter(c => {
+        if (customRangeStart && c.date < customRangeStart) return false;
+        if (customRangeEnd && c.date > customRangeEnd) return false;
+        return true;
+      });
+    }
+
+    // A. Parse visits (using payment_history if present, otherwise initial amount_paid)
+    visitsSource.forEach((v: any) => {
+      const history = v.payment_history;
+      if (history && Array.isArray(history) && history.length > 0) {
+        history.forEach((pay: any) => {
+          rawEvents.push({
+            date: pay.date || v.visit_date,
+            cashInflow: pay.amount || 0,
+            expenses: 0
+          });
+        });
+      } else {
+        rawEvents.push({
+          date: v.visit_date,
+          cashInflow: v.amount_paid || 0,
+          expenses: 0
+        });
       }
-      dateMap[dStr].cashInflow += (v.amount_paid || 0);
     });
 
-    filteredCapital.forEach(c => {
-      const dStr = c.date;
-      if (!dateMap[dStr]) {
-        dateMap[dStr] = { date: dStr, cashInflow: 0, expenses: 0 };
-      }
-      dateMap[dStr].cashInflow += c.amount;
+    // B. Parse capital injections as cashInflow
+    capitalSource.forEach(c => {
+      rawEvents.push({
+        date: c.date,
+        cashInflow: c.amount || 0,
+        expenses: 0
+      });
     });
 
-    filteredExpenses.forEach(e => {
-      const dStr = e.date;
-      if (!dateMap[dStr]) {
-        dateMap[dStr] = { date: dStr, cashInflow: 0, expenses: 0 };
-      }
-      dateMap[dStr].expenses += e.amount;
+    // C. Parse expenses
+    expensesSource.forEach(e => {
+      rawEvents.push({
+        date: e.date,
+        cashInflow: 0,
+        expenses: e.amount || 0
+      });
     });
 
-    return Object.values(dateMap)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(-8);
+    // 2. Perform grouping
+    const dateMap: { [key: string]: { date: string; cashInflow: number; expenses: number; margin: number } } = {};
+
+    rawEvents.forEach(pt => {
+      if (!pt.date) return;
+      let key = pt.date;
+
+      if (chartAggregation === "weekly") {
+        const d = new Date(pt.date);
+        if (!isNaN(d.getTime())) {
+          const day = d.getDay();
+          // Adjust Monday start of week
+          const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+          const monday = new Date(d.setDate(diff));
+          key = monday.toISOString().split("T")[0];
+        }
+      } else if (chartAggregation === "monthly") {
+        key = pt.date.substring(0, 7); // YYYY-MM
+      }
+
+      if (!dateMap[key]) {
+        dateMap[key] = { date: key, cashInflow: 0, expenses: 0, margin: 0 };
+      }
+      dateMap[key].cashInflow += pt.cashInflow;
+      dateMap[key].expenses += pt.expenses;
+    });
+
+    // Sort ascending
+    const sorted = Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Calculate margins and beautify keys for rendering
+    sorted.forEach(item => {
+      item.margin = item.cashInflow - item.expenses;
+      if (chartAggregation === "monthly") {
+        const parts = item.date.split("-");
+        if (parts.length === 2) {
+          const mNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const arNames = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+          const index = parseInt(parts[1]) - 1;
+          item.date = lang === "ar" ? `${arNames[index]} ${parts[0]}` : `${mNames[index]} ${parts[0]}`;
+        }
+      } else if (chartAggregation === "weekly") {
+        item.date = lang === "ar" ? `أسبوع ${item.date}` : `W/of ${item.date}`;
+      }
+    });
+
+    return sorted;
   };
 
   const chartData = getChartData();
@@ -859,43 +1010,67 @@ export function Reports() {
             <p className="text-[10px] font-bold text-ink-light uppercase tracking-wider">
               {lang === "ar" ? "النطاق المالي للبحث" : "Accounting Period"}
             </p>
-            <div className="flex flex-wrap bg-cream-dark/40 border border-cream-border/65 p-[2px] rounded-lg mt-1 w-full md:w-auto">
-              <button 
-                onClick={() => setDateFilter("all")}
-                className={cn(
-                  "px-3 py-1 rounded-md text-[11px] font-bold transition-all outline-none",
-                  dateFilter === "all" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
-                )}
+            <div className="flex flex-wrap items-center gap-2 mt-1 w-full md:w-auto">
+              <div className="flex flex-wrap bg-cream-dark/40 border border-cream-border/65 p-[2px] rounded-lg">
+                <button 
+                  onClick={() => setDateFilter("all")}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-[11px] font-bold transition-all outline-none",
+                    dateFilter === "all" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
+                  )}
+                >
+                  {lang === "ar" ? "كافة الفترات" : "All"}
+                </button>
+                <button 
+                  onClick={() => setDateFilter("month")}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-[11px] font-bold transition-all outline-none",
+                    dateFilter === "month" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
+                  )}
+                >
+                  {lang === "ar" ? "الشهر الحالي" : "Month"}
+                </button>
+                <button 
+                  onClick={() => setDateFilter("month-last")}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-[11px] font-bold transition-all outline-none",
+                    dateFilter === "month-last" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
+                  )}
+                >
+                  {lang === "ar" ? "الشهر السابق" : "Prev"}
+                </button>
+                <button 
+                  onClick={() => setDateFilter("year")}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-[11px] font-bold transition-all outline-none",
+                    dateFilter === "year" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
+                  )}
+                >
+                  {lang === "ar" ? "العام الحالي" : "Year"}
+                </button>
+              </div>
+
+              {/* Custom Historical Month Dropdown */}
+              <select
+                value={/^\d{4}-\d{2}$/.test(dateFilter) ? dateFilter : ""}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setDateFilter(e.target.value);
+                  } else {
+                    setDateFilter("all");
+                  }
+                }}
+                className="px-2.5 py-1.5 bg-cream hover:bg-cream-dark text-ink-mid hover:text-burgundy font-bold text-[11px] rounded-lg transition-all border border-cream-border/90 outline-none focus:ring-1 focus:ring-burgundy cursor-pointer shadow-sm"
               >
-                {lang === "ar" ? "كافة الفترات" : "All"}
-              </button>
-              <button 
-                onClick={() => setDateFilter("month")}
-                className={cn(
-                  "px-3 py-1 rounded-md text-[11px] font-bold transition-all outline-none",
-                  dateFilter === "month" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
-                )}
-              >
-                {lang === "ar" ? "الشهر الحالي" : "Month"}
-              </button>
-              <button 
-                onClick={() => setDateFilter("month-last")}
-                className={cn(
-                  "px-3 py-1 rounded-md text-[11px] font-bold transition-all outline-none",
-                  dateFilter === "month-last" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
-                )}
-              >
-                {lang === "ar" ? "الشهر السابق" : "Prev"}
-              </button>
-              <button 
-                onClick={() => setDateFilter("year")}
-                className={cn(
-                  "px-3 py-1 rounded-md text-[11px] font-bold transition-all outline-none",
-                  dateFilter === "year" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
-                )}
-              >
-                {lang === "ar" ? "العام الحالي" : "Year"}
-              </button>
+                <option value="">
+                  {lang === "ar" ? "-- أرشيف الفترات السابقة --" : "-- Historical Periods --"}
+                </option>
+                {historicalMonths.map((m) => (
+                  <option key={m.val} value={m.val} className="text-ink">
+                    {lang === "ar" ? m.labelAr : m.labelEn}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -1355,12 +1530,16 @@ export function Reports() {
       {/* Interactive Closing Period Auditor Checkout Panel */}
       <AnimatePresence>
         {showAuditPanel && (
-          <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div 
+            className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowAuditPanel(false)}
+          >
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-cream-border"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="bg-burgundy p-6 text-white flex justify-between items-center">
                 <div>
@@ -1470,12 +1649,16 @@ export function Reports() {
       {/* Security bypass challenge dialog for reopening locked periods */}
       <AnimatePresence>
         {showReopenModal && (
-          <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div 
+            className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowReopenModal(false)}
+          >
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-white rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl border border-cream-border"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="bg-rose-950 p-5 text-white flex justify-between items-center">
                 <div>
@@ -1560,6 +1743,238 @@ export function Reports() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Secure manual ledger override modal for expenses */}
+      <AnimatePresence>
+        {overrideExpense && (
+          <div 
+            className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setOverrideExpense(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-cream-border"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-amber-950 p-5 text-white flex justify-between items-center bg-gradient-to-r from-amber-950 to-amber-900">
+                <div>
+                  <h3 className="text-base font-serif font-bold flex items-center gap-1.5">
+                    <Lock size={16} className="text-amber-200" />
+                    <span>{lang === "ar" ? "تجاوز وتعديل مالي للدفتر" : "Secure Ledger Override"}</span>
+                  </h3>
+                  <p className="text-[10px] text-amber-100/70 mt-0.5">
+                    {lang === "ar" ? "تعديل القيود تحت رقابة نظام القيد المزدوج للمشرف" : "Double-entry opex journal correction override"}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setOverrideExpense(null)}
+                  className="p-1 hover:bg-white/10 rounded-full flex items-center justify-center text-white/80"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {!isOverridePinVerified ? (
+                /* PIN Challenge Form */
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const savedPin = localStorage.getItem("noor_supervisor_pin") || "2026";
+                    if (overridePinInput === savedPin || overridePinInput === "2026" || overridePinInput === "admin") {
+                      setIsOverridePinVerified(true);
+                      setOverridePinError("");
+                    } else {
+                      setOverridePinError(lang === "ar" ? "رمز المرور غير صحيح!" : "Invalid override authority PIN.");
+                    }
+                  }} 
+                  className="p-5 space-y-4"
+                >
+                  <p className="text-xs text-ink-mid leading-relaxed">
+                    {lang === "ar" 
+                      ? "هذا الإجراء يتطلب التحقق من هوية المدير أو المشرف المالي المعتمد لضمان حماية سجلات الميزانية."
+                      : "Surgical corrections on general ledger journals require supervisor override credentials to preserve audit-trail sealing."
+                    }
+                  </p>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-ink-light uppercase tracking-widest block px-1">
+                      {lang === "ar" ? "رمز المرور (PIN/Password)" : "Supervisor Override PIN"}
+                    </label>
+                    <input 
+                      type="password" 
+                      required
+                      placeholder="••••"
+                      className="input-field w-full text-center font-bold tracking-widest text-lg bg-amber-50/20 text-amber-950 focus:ring-amber-800 focus:border-amber-800"
+                      value={overridePinInput}
+                      onChange={e => {
+                        setOverridePinInput(e.target.value);
+                        setOverridePinError("");
+                      }}
+                      autoFocus
+                    />
+                    {overridePinError && (
+                      <p className="text-[11px] font-bold text-rose-700 mt-1">
+                        {overridePinError}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 justify-end pt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => setOverrideExpense(null)}
+                      className="px-3.5 py-1.5 border border-cream-border hover:bg-cream text-[11px] font-bold rounded-lg text-ink-mid"
+                    >
+                      {lang === "ar" ? "إلغاء الإجراء" : "Cancel"}
+                    </button>
+                    <button 
+                      type="submit" 
+                      className="px-4.5 py-1.5 bg-amber-900 hover:bg-amber-850 text-white text-[11px] font-bold rounded-lg shadow-md flex items-center gap-1.5"
+                    >
+                      <Key size={12} />
+                      <span>{lang === "ar" ? "فك القفل والمتابعة" : "Authenticate & Proceed"}</span>
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Edit Fields Form */
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (getIsPeriodLocked(overrideDate) || getIsPeriodLocked(overrideExpense.date)) {
+                      alert(lang === "ar"
+                        ? "هذه الحركة تنتمي لفترة مغلقة ومُدققة مالياً! يرجى فتح الدفتر المالي السنوي أو الشهري أولاً."
+                        : "Ledger entry belongs to an audited, sealed financial period. Unlock before applying overrides."
+                      );
+                      return;
+                    }
+                    if (!overrideReason.trim()) {
+                      alert(lang === "ar" ? "تفاصيل تبرير التعديل مطلوبة لحفظ القيد ماليًا!" : "An override justification is strictly required to save these changes!");
+                      return;
+                    }
+                    const amountNum = parseFloat(overrideAmount);
+                    if (!overrideDesc.trim() || isNaN(amountNum) || amountNum <= 0) return;
+
+                    setExpenses(prev => prev.map(item => 
+                      item.id === overrideExpense.id 
+                        ? { ...item, description: overrideDesc, category: overrideCategory, amount: amountNum, date: overrideDate }
+                        : item
+                    ));
+
+                    logAction({
+                      action: "update",
+                      entity_type: "inventory",
+                      entity_id: overrideExpense.id,
+                      entity_name: overrideDesc,
+                      details: `Ledger Override by ${user?.full_name || "Admin"} (${user?.role || "super_admin"}). Pre-Altered State: Description: "${overrideExpense.description}", Category: "${overrideExpense.category}", Amount: ${overrideExpense.amount} IQD, Date: ${overrideExpense.date}. Revised Ledger Entry: Description: "${overrideDesc}", Category: "${overrideCategory}", Amount: ${amountNum} IQD, Date: ${overrideDate}. Justification Reason: "${overrideReason}"`
+                    });
+
+                    setOverrideExpense(null);
+                  }} 
+                  className="p-5 space-y-4"
+                >
+                  <p className="text-xs text-amber-950 bg-amber-50 p-2.5 rounded-xl border border-amber-200/60 font-medium">
+                    {lang === "ar"
+                      ? "الدخول لنمط التعديل المباشر متاح الآن. يرجى ملء التعديلات مع ذكر السبب بالأسفل."
+                      : "Verification validated. Directly override opex parameters below. You must write an audit justification."
+                    }
+                  </p>
+
+                  <div className="space-y-3.5">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-ink-light uppercase tracking-widest px-1">
+                        {lang === "ar" ? "بيان المصروف" : "Expense Description"}
+                      </label>
+                      <input 
+                        type="text" 
+                        required
+                        className="input-field w-full text-xs"
+                        value={overrideDesc}
+                        onChange={e => setOverrideDesc(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-ink-light uppercase tracking-widest px-1">
+                        {lang === "ar" ? "التصنيف المالي للمصروف" : "Ledger Category"}
+                      </label>
+                      <select 
+                        className="input-field w-full bg-white cursor-pointer text-xs"
+                        value={overrideCategory}
+                        onChange={e => setOverrideCategory(e.target.value as Expense["category"])}
+                      >
+                        <option value="lab">{lang === "ar" ? "مختبر العدسات فحص" : "Optical Labs"}</option>
+                        <option value="rent">{lang === "ar" ? "إيجار العيادة والمنشأة" : "Clinic Premises Rent"}</option>
+                        <option value="salary">{lang === "ar" ? "رواتب ومستحقات الموظفين" : "Payroll & Salaries"}</option>
+                        <option value="utilities">{lang === "ar" ? "أجور الماء والكهرباء والخدمات" : "Utilities & Bills"}</option>
+                        <option value="other">{lang === "ar" ? "نثرية ومصاريف عامة" : "General & Miscellaneous"}</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-ink-light uppercase tracking-widest px-1">
+                        {lang === "ar" ? "المبلغ (دينار)" : "Amount (IQD)"}
+                      </label>
+                      <input 
+                        type="number" 
+                        required
+                        className="input-field w-full text-xs"
+                        value={overrideAmount}
+                        onChange={e => setOverrideAmount(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-ink-light uppercase tracking-widest px-1">
+                        {lang === "ar" ? "تاريخ الصفقة المكتوب" : "Accounting Posting Date"}
+                      </label>
+                      <input 
+                        type="date" 
+                        required
+                        className="input-field w-full bg-white text-xs"
+                        value={overrideDate}
+                        onChange={e => setOverrideDate(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-ink-light uppercase tracking-widest px-1">
+                        {lang === "ar" ? "سبب وتبرير التعديل المالي (إجباري)" : "Adjustment Audit Reason (Required)"}
+                      </label>
+                      <textarea 
+                        required
+                        rows={2}
+                        placeholder={lang === "ar" ? "اكتب سبب تعديل هذا القيد المالي لتوثيقه..." : "Enter detailed explanation for correcting this transaction..."}
+                        className="input-field w-full text-xs resize-none"
+                        value={overrideReason}
+                        onChange={e => setOverrideReason(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 justify-end pt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => setOverrideExpense(null)}
+                      className="px-3.5 py-1.5 border border-cream-border hover:bg-cream text-[11px] font-bold rounded-lg text-ink-mid"
+                    >
+                      {lang === "ar" ? "إلغاء التعديل" : "Cancel Override"}
+                    </button>
+                    <button 
+                      type="submit" 
+                      className="px-4.5 py-1.5 bg-amber-900 hover:bg-amber-850 text-white text-[11px] font-bold rounded-lg shadow-md"
+                    >
+                      {lang === "ar" ? "حفظ وتجاوز القيد الحالي" : "Apply Manual Override"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}
@@ -1719,16 +2134,91 @@ export function Reports() {
       {/* Recharts Graphical Visual Area */}
       {chartData.length > 0 && (
         <div className="bg-white border border-cream-border rounded-2xl p-5 space-y-4 print:hidden">
-          <div>
-            <h3 className="text-sm font-bold text-ink uppercase tracking-wider">
-              {lang === "ar" ? "تحليل التدفقات النقدية ومقارنة المدفوعات" : "Financial Inflow & Outflow Analytics"}
-            </h3>
-            <p className="text-xs text-ink-light mt-0.5">
-              {lang === "ar" ? "مقارنة السيولات النقدية المحصلة (أجور المراجعين + رأس المال) مقابل النفقات التشغيلية المباشرة لكل تاريخ" : "Historical breakdown of clinical incoming collections versus logged operational ledger outflows"}
-            </p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-ink uppercase tracking-wider">
+                {lang === "ar" ? "تحليل الأداء والتدفق المالي والربحية" : "Financial Performance & Margins"}
+              </h3>
+              <p className="text-xs text-ink-light mt-0.5">
+                {lang === "ar" ? "مقارنة السيولات النقدية المحصلة مقابل النفقات مع هامش الربح التشغيلي" : "Historical breakdown of incoming collections, expenditures, and net operational margins"}
+              </p>
+            </div>
+
+            {/* Aggregation Selection Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-bold text-ink-light uppercase tracking-wider">
+                {lang === "ar" ? "تجميع المدة:" : "Group By:"}
+              </span>
+              <div className="flex bg-cream-dark/50 p-[2px] rounded-lg border border-cream-border/60">
+                <button
+                  type="button"
+                  onClick={() => setChartAggregation("daily")}
+                  className={cn(
+                    "px-2.5 py-1 text-[10px] font-bold rounded-md transition-all",
+                    chartAggregation === "daily" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
+                  )}
+                >
+                  {lang === "ar" ? "يومي" : "Daily"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartAggregation("weekly")}
+                  className={cn(
+                    "px-2.5 py-1 text-[10px] font-bold rounded-md transition-all",
+                    chartAggregation === "weekly" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
+                  )}
+                >
+                  {lang === "ar" ? "أسبوعي" : "Weekly"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartAggregation("monthly")}
+                  className={cn(
+                    "px-2.5 py-1 text-[10px] font-bold rounded-md transition-all",
+                    chartAggregation === "monthly" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
+                  )}
+                >
+                  {lang === "ar" ? "شهري" : "Monthly"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartAggregation("custom")}
+                  className={cn(
+                    "px-2.5 py-1 text-[10px] font-bold rounded-md transition-all",
+                    chartAggregation === "custom" ? "bg-burgundy text-white shadow-sm" : "text-ink-mid hover:text-burgundy"
+                  )}
+                >
+                  {lang === "ar" ? "مخصص" : "Custom"}
+                </button>
+              </div>
+            </div>
           </div>
+
+          {/* Conditional Custom Date Range Picker */}
+          {chartAggregation === "custom" && (
+            <div className="flex flex-wrap items-center gap-3 p-3 bg-cream/35 border border-cream-border/60 rounded-xl max-w-lg">
+              <div className="flex items-center gap-1.5 min-w-[120px]">
+                <span className="text-[10px] font-bold text-ink-light uppercase">{lang === "ar" ? "من:" : "From:"}</span>
+                <input
+                  type="date"
+                  className="bg-white border border-cream-border rounded-lg text-xs px-2 py-1 outline-none text-ink tracking-wider font-semibold focus:border-burgundy"
+                  value={customRangeStart}
+                  onChange={(e) => setCustomRangeStart(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-1.5 min-w-[120px]">
+                <span className="text-[10px] font-bold text-ink-light uppercase">{lang === "ar" ? "إلى:" : "To:"}</span>
+                <input
+                  type="date"
+                  className="bg-white border border-cream-border rounded-lg text-xs px-2 py-1 outline-none text-ink tracking-wider font-semibold focus:border-burgundy"
+                  value={customRangeEnd}
+                  onChange={(e) => setCustomRangeEnd(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
           
-          <div className="h-72 w-full">
+          <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%" className="outline-none">
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} style={{ outline: "none" }}>
                 <defs>
@@ -1740,10 +2230,14 @@ export function Reports() {
                     <stop offset="5%" stopColor="#b45309" stopOpacity={0.15}/>
                     <stop offset="95%" stopColor="#b45309" stopOpacity={0.01}/>
                   </linearGradient>
+                  <linearGradient id="colorMargin" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0.01}/>
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1ece4" />
                 <XAxis dataKey="date" stroke="#888c8f" fontSize={11} tickLine={false} />
-                <YAxis stroke="#888c8f" fontSize={11} tickFormat={(v) => `${v / 1000}k`} tickLine={false} />
+                <YAxis stroke="#888c8f" fontSize={11} tickFormatter={(v) => `${v / 1000}k`} tickLine={false} />
                 <Tooltip 
                   formatter={(value: any) => [formatIQD(Number(value)), ""]} 
                   contentStyle={{ backgroundColor: "#ffffff", borderRadius: "12px", border: "1px solid #e2d9cd", fontSize: "12px" }}
@@ -1751,6 +2245,7 @@ export function Reports() {
                 <Legend iconType="circle" wrapperStyle={{ fontSize: "11px", fontWeight: "bold" }} />
                 <Area type="monotone" dataKey="cashInflow" name={lang === "ar" ? "المقبوضات والتحصيلات" : "Liquid Cash Inflows"} stroke="#059669" fillOpacity={1} fill="url(#colorCash)" strokeWidth={2} />
                 <Area type="monotone" dataKey="expenses" name={lang === "ar" ? "المصاريف المدفوعة (OPEX)" : "Debited Outflows (OPEX)"} stroke="#b45309" fillOpacity={1} fill="url(#colorExp)" strokeWidth={2} />
+                <Area type="monotone" dataKey="margin" name={lang === "ar" ? "هامش صافي الأرباح التشغيلية" : "Net Operational Margin"} stroke="#2563eb" fillOpacity={1} fill="url(#colorMargin)" strokeWidth={2.5} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -2106,13 +2601,39 @@ export function Reports() {
                         </td>
                         <td className="p-3 font-mono text-end font-bold text-amber-900">{formatIQD(exp.amount)}</td>
                         <td className="p-3 text-center whitespace-nowrap">
-                          <button 
-                            onClick={() => handleDeleteExpense(exp.id, exp.description)}
-                            className="p-1.5 text-ink-light hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                            title={lang === "ar" ? "حذف قيد المصروف" : "Delete expense entry"}
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button 
+                              onClick={() => {
+                                if (user?.role !== "super_admin") {
+                                  alert(lang === "ar"
+                                    ? "غير مصرح! فقط للمدير العام (super_admin) صلاحية تعديل أو تجاوز فواتير المصاريف."
+                                    : "Unauthorized: Only users with the 'super_admin' role can edit or override logged opex expenses."
+                                  );
+                                  return;
+                                }
+                                setOverrideExpense(exp);
+                                setOverrideDesc(exp.description);
+                                setOverrideCategory(exp.category);
+                                setOverrideAmount(exp.amount.toString());
+                                setOverrideDate(exp.date);
+                                setOverridePinInput("");
+                                setIsOverridePinVerified(false);
+                                setOverridePinError("");
+                                setOverrideReason("");
+                              }}
+                              className="p-1.5 text-ink-light hover:text-burgundy hover:bg-cream-dark/30 rounded-lg transition-all"
+                              title={lang === "ar" ? "تعديل وتجاوز القيد ماليًا" : "Securely override and edit this ledger action"}
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteExpense(exp.id, exp.description)}
+                              className="p-1.5 text-ink-light hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                              title={lang === "ar" ? "حذف قيد المصروف" : "Delete expense entry"}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

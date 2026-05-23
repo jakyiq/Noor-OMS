@@ -11,6 +11,7 @@ interface NewVisitModalProps {
   onSave: (visitData: any) => void;
   lang: string;
   visitToEdit?: any | null;
+  isCloning?: boolean;
 }
 
 const LENS_TYPES = [
@@ -59,6 +60,7 @@ export const NewVisitModal: React.FC<NewVisitModalProps> = ({
   onSave,
   lang,
   visitToEdit,
+  isCloning = false,
 }) => {
   const { lensCatalog, frames, lenses } = useClinic();
   
@@ -101,8 +103,53 @@ export const NewVisitModal: React.FC<NewVisitModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      if (visitToEdit && visitToEdit.rawFormData) {
-        setData(visitToEdit.rawFormData);
+      if (visitToEdit) {
+        if (visitToEdit.rawFormData) {
+          const loadedData = { ...visitToEdit.rawFormData };
+          if (isCloning) {
+            loadedData.paidAmount = "";
+            loadedData.notes = "";
+            loadedData.matchedOdLensId = null;
+            loadedData.matchedOsLensId = null;
+            loadedData.frameStockItem = "";
+            loadedData.matchedFrameId = null;
+          }
+          setData(loadedData);
+        } else if (visitToEdit.rxData) {
+          // Reconstruct rawFormData from rxData
+          const rx = visitToEdit.rxData;
+          const leftEyePresent = !!rx.os;
+          const rightEyePresent = !!rx.od;
+          const eyesCount = (leftEyePresent && rightEyePresent) ? "both" : (rightEyePresent ? "od" : "os");
+
+          const parseEye = (eye: any) => {
+            if (!eye) return { sph: "", sphSign: "+", cyl: "", cylSign: "+", axis: "", add: "", va: "6/6", bcva: "6/6" };
+            return {
+              sph: eye.sph !== undefined && eye.sph !== null ? String(eye.sph) : "",
+              sphSign: eye.sphSign || "+",
+              cyl: eye.cyl !== undefined && eye.cyl !== null ? String(eye.cyl) : "",
+              cylSign: eye.cylSign || "+",
+              axis: eye.axis !== undefined && eye.axis !== null ? String(eye.axis) : "",
+              add: eye.add !== undefined && eye.add !== null ? String(eye.add) : "",
+              va: eye.va || "6/6",
+              bcva: eye.bcva || "6/6"
+            };
+          };
+
+          setData({
+            ...defaultData,
+            eyesCount: eyesCount as "both" | "od" | "os",
+            od: parseEye(rx.od),
+            os: parseEye(rx.os),
+            lensType: rx.lens || currentLensTypes[0]?.value || "Single Vision",
+            ipd: rx.ipd || "",
+            includeFrame: !!rx.frame,
+            frameBrand: rx.frame || "",
+            notes: "", // Always empty notes for cloned
+            paidAmount: "", // Always empty paid for cloned
+            lensPrice: String(visitToEdit.total_amount || "15000"),
+          });
+        }
       } else {
         setData({
           ...defaultData,
@@ -114,7 +161,7 @@ export const NewVisitModal: React.FC<NewVisitModalProps> = ({
       setActiveTab("rx");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, visitToEdit, currentLensTypes, currentMaterials, currentCoatings]);
+  }, [isOpen, visitToEdit, isCloning, currentLensTypes, currentMaterials, currentCoatings]);
 
   const renderLensStockMatch = () => {
     let checkOd = data.eyesCount === 'both' || data.eyesCount === 'od';

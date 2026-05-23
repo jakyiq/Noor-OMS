@@ -55,7 +55,7 @@ export function Inventory() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState<"all" | "low_stock">("all");
 
-  // Load items from localStorage or use defaults
+  // Load items from localStorage or use defaults (starts empty for persistence)
   const [items, setItems] = useState<InventoryItem[]>(() => {
     const saved = localStorage.getItem("noor_inventory_items");
     let activeItems: InventoryItem[] = [];
@@ -64,56 +64,6 @@ export function Inventory() {
         activeItems = JSON.parse(saved);
       } catch (err) {
         console.error("Error loading inventory items", err);
-      }
-    }
-    
-    const defaultContactLens: InventoryItem = { 
-      id: "quick_contact_lens", 
-      name: "Bio-Soft Monthly Contact Lenses", 
-      category: "contact_lens", 
-      sku: "CL-020", 
-      stock_level: 30, 
-      reorder_point: 5, 
-      unit_price: 35000, 
-      updated_at: "2026-05-20" 
-    };
-    
-    const defaultReadingFrame: InventoryItem = { 
-      id: "quick_reading_frame", 
-      name: "Generic Reading Frame (+1.50)", 
-      category: "reading_frame", 
-      sku: "RF-050", 
-      stock_level: 50, 
-      reorder_point: 10, 
-      unit_price: 15000, 
-      updated_at: "2026-05-20" 
-    };
-
-    if (activeItems.length === 0) {
-      activeItems = [
-        { id: "1", name: "Classic Aviator Frame", category: "frame", sku: "FR-001", stock_level: 45, reorder_point: 10, unit_price: 25000, updated_at: "2024-05-12" },
-        { id: "2", name: "Anti-Reflective Lens (Pair)", category: "lens", sku: "LN-002", stock_level: 8, reorder_point: 15, unit_price: 15000, updated_at: "2024-05-10" },
-        { id: "3", name: "Premium Microfiber Cloth", category: "accessory", sku: "AC-003", stock_level: 120, reorder_point: 50, unit_price: 2000, updated_at: "2024-05-15" },
-        { id: "4", name: "Lens Cleaning Spray 30ml", category: "accessory", sku: "AC-004", stock_level: 5, reorder_point: 20, unit_price: 5000, updated_at: "2024-05-01" },
-        { id: "5", name: "Titanium Rimless Frame", category: "frame", sku: "FR-005", stock_level: 22, reorder_point: 5, unit_price: 85000, updated_at: "2024-05-05" },
-        defaultContactLens,
-        defaultReadingFrame
-      ];
-      localStorage.setItem("noor_inventory_items", JSON.stringify(activeItems));
-    } else {
-      let needsSave = false;
-      const hasContactLens = activeItems.some(item => item.category === "contact_lens");
-      if (!hasContactLens) {
-        activeItems.push(defaultContactLens);
-        needsSave = true;
-      }
-      const hasReadingFrame = activeItems.some(item => item.category === "reading_frame");
-      if (!hasReadingFrame) {
-        activeItems.push(defaultReadingFrame);
-        needsSave = true;
-      }
-      if (needsSave) {
-        localStorage.setItem("noor_inventory_items", JSON.stringify(activeItems));
       }
     }
     return activeItems;
@@ -140,10 +90,7 @@ export function Inventory() {
         console.error("Error reading suppliers", e);
       }
     }
-    return [
-      { id: "s1", name: "Optical Global Distribution", contact_person: "Mazen Ahmed", phone: "+964 770 123 4567", email: "sales@opticalglobal.com", address: "Baghdad, Al-Mansour", payment_terms: "Net 30" },
-      { id: "s2", name: "Vision Care Lenses Co.", contact_person: "Sarah Khalid", phone: "+964 780 987 6543", email: "orders@visioncare.iq", address: "Erbil, 60m Street", payment_terms: "Direct Payment" },
-    ];
+    return [];
   });
 
   // Save suppliers whenever state changes
@@ -229,6 +176,7 @@ export function Inventory() {
     reorder_point: 2,
     unit_price: 5000,
     cost_price: 3000,
+    is_quick_sell: false
   });
 
   const combinedItems = useMemo(() => {
@@ -316,7 +264,8 @@ export function Inventory() {
       stock_level: 10,
       reorder_point: 2,
       unit_price: 5000,
-      cost_price: 3000
+      cost_price: 3000,
+      is_quick_sell: false
     });
     setIsAddEditOpen(true);
   };
@@ -330,7 +279,8 @@ export function Inventory() {
       stock_level: item.stock_level,
       reorder_point: item.reorder_point,
       unit_price: item.unit_price,
-      cost_price: item.cost_price || 0
+      cost_price: item.cost_price || 0,
+      is_quick_sell: !!item.is_quick_sell
     });
     setIsAddEditOpen(true);
   };
@@ -355,6 +305,9 @@ export function Inventory() {
       return;
     }
 
+    const currentStockLevel = Number(formData.stock_level);
+    const currentCostPrice = Number(formData.cost_price || 0);
+
     if (editingItem) {
       // Modify existing
       setItems(prev => prev.map(i => i.id === editingItem.id ? {
@@ -362,19 +315,45 @@ export function Inventory() {
         name: formData.name,
         category: formData.category,
         sku: formData.sku,
-        stock_level: Number(formData.stock_level),
+        stock_level: currentStockLevel,
         reorder_point: Number(formData.reorder_point),
         unit_price: Number(formData.unit_price),
-        cost_price: Number(formData.cost_price || 0),
+        cost_price: currentCostPrice,
+        is_quick_sell: formData.is_quick_sell,
         updated_at: new Date().toISOString().split("T")[0]
       } : i));
+
+      // Calculate quantity difference for and log expense cost if stock level increased
+      const qtyDiff = currentStockLevel - editingItem.stock_level;
+      if (qtyDiff > 0 && currentCostPrice > 0) {
+        const addedCost = qtyDiff * currentCostPrice;
+        let currentExps: any[] = [];
+        const savedExps = localStorage.getItem("noor_expenses");
+        if (savedExps) {
+          try {
+            currentExps = JSON.parse(savedExps);
+          } catch (err) {
+            currentExps = [];
+          }
+        }
+        currentExps.unshift({
+          id: "e_inv_restock_" + Math.random().toString(36).substring(7),
+          description: lang === "ar"
+            ? `إعادة تزويد مخزون المنتج [${formData.name}]: زيادة عدد ${qtyDiff} قطعة`
+            : `Restocked product [${formData.name}]: increased by ${qtyDiff} units`,
+          category: (formData.category === "lens" || formData.category === "contact_lens") ? "lab" : "other",
+          amount: addedCost,
+          date: new Date().toISOString().split("T")[0]
+        });
+        localStorage.setItem("noor_expenses", JSON.stringify(currentExps));
+      }
 
       logAction({
         action: "update",
         entity_type: "inventory",
         entity_id: editingItem.id,
         entity_name: formData.name,
-        details: `Modified product configuration or stock totals.`
+        details: `Modified product configuration or stock totals. Restock cost logged to reports if quantity increased.`
       });
     } else {
       // Append new product
@@ -383,21 +362,46 @@ export function Inventory() {
         name: formData.name,
         category: formData.category,
         sku: formData.sku,
-        stock_level: Number(formData.stock_level),
+        stock_level: currentStockLevel,
         reorder_point: Number(formData.reorder_point),
         unit_price: Number(formData.unit_price),
-        cost_price: Number(formData.cost_price || 0),
+        cost_price: currentCostPrice,
+        is_quick_sell: formData.is_quick_sell,
         updated_at: new Date().toISOString().split("T")[0]
       };
 
       setItems(prev => [newItem, ...prev]);
+
+      // Log full initial purchase cost as an expense
+      if (currentStockLevel > 0 && currentCostPrice > 0) {
+        const addedCost = currentStockLevel * currentCostPrice;
+        let currentExps: any[] = [];
+        const savedExps = localStorage.getItem("noor_expenses");
+        if (savedExps) {
+          try {
+            currentExps = JSON.parse(savedExps);
+          } catch (err) {
+            currentExps = [];
+          }
+        }
+        currentExps.unshift({
+          id: "e_inv_new_" + Math.random().toString(36).substring(7),
+          description: lang === "ar"
+            ? `شراء مخزون أولي وتأسيس المنتج [${formData.name}]: عدد ${currentStockLevel} قطعة`
+            : `Initial stock purchase for product [${formData.name}]: bought ${currentStockLevel} units`,
+          category: (formData.category === "lens" || formData.category === "contact_lens") ? "lab" : "other",
+          amount: addedCost,
+          date: new Date().toISOString().split("T")[0]
+        });
+        localStorage.setItem("noor_expenses", JSON.stringify(currentExps));
+      }
 
       logAction({
         action: "create",
         entity_type: "inventory",
         entity_id: newItem.id,
         entity_name: newItem.name,
-        details: `Created new miscellaneous/OTC retail product.`
+        details: `Created new product inside inventory catalog. Stock procurement value logged to financials.`
       });
     }
 
@@ -887,9 +891,16 @@ export function Inventory() {
                         <div className="space-y-3">
                           {/* Top row: Category Pill & Stock Status */}
                           <div className="flex justify-between items-center gap-2">
-                            <span className="px-2 py-0.5 bg-cream text-burgundy text-[9px] font-bold uppercase tracking-widest rounded">
-                              {getCategoryLabel(item.category)}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 bg-cream text-burgundy text-[9px] font-bold uppercase tracking-widest rounded">
+                                {getCategoryLabel(item.category)}
+                              </span>
+                              {item.is_quick_sell && (
+                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-extrabold rounded flex items-center gap-0.5 animate-pulse">
+                                  ⚡ {lang === "ar" ? "بيع سريع" : "Quick POS"}
+                                </span>
+                              )}
+                            </div>
                             
                             {/* Stock Indicator */}
                             <div className="flex items-center">
@@ -1261,6 +1272,20 @@ export function Inventory() {
                       className="w-full bg-cream/40 border-2 border-cream-border px-3 py-2.5 rounded-xl text-xs font-mono outline-none focus:border-burgundy"
                     />
                   </div>
+                </div>
+
+                {/* Quick Sell checkbox option */}
+                <div className="flex items-center gap-2.5 py-3 px-4 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="is_quick_sell_chk"
+                    checked={formData.is_quick_sell}
+                    onChange={(e) => setFormData(prev => ({ ...prev, is_quick_sell: e.target.checked }))}
+                    className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-cream-border rounded focus:ring-2 cursor-pointer"
+                  />
+                  <label htmlFor="is_quick_sell_chk" className="text-xs font-bold text-emerald-900 cursor-pointer select-none">
+                    {lang === "ar" ? "إعلان المنتج للبيع السريع المباشر في الكاونتر (Quick Sell)" : "Enable Direct Quick Sale at POS Station"}
+                  </label>
                 </div>
 
                 {/* Submit controls */}

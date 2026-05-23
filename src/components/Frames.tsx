@@ -214,75 +214,170 @@ export function Frames() {
       </div>
 
       {/* List */}
-      <div className="bg-white rounded-xl shadow-sm border border-cream-border overflow-x-auto">
-        <table className="w-full text-start whitespace-nowrap min-w-[700px]">
-          <thead className="bg-cream/50 border-b border-cream-border text-[10px] uppercase tracking-widest text-ink-light">
-            <tr>
-              <th className="px-4 py-3 text-start font-bold">Brand & Model</th>
-              <th className="px-4 py-3 text-start font-bold">Color</th>
-              <th className="px-4 py-3 text-start font-bold">Type / Shape</th>
-              <th className="px-4 py-3 text-center font-bold">Stock</th>
-              <th className="px-4 py-3 text-start font-bold">Price</th>
-              <th className="px-4 py-3 text-end font-bold">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-cream-border text-sm">
-            {filteredFrames.map(f => (
-              <tr key={f.id} className={cn("hover:bg-cream/20 transition-colors", f.quantity <= f.min_stock ? "bg-rose-50/20" : "")}>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className={cn("w-8 h-8 rounded shrink-0 flex items-center justify-center", f.quantity <= f.min_stock ? "bg-rose-100 text-rose-600" : "bg-cream text-burgundy")}>
-                      <Glasses size={16} />
+      <div className="space-y-4">
+        {/* Desktop View (Visible on lg screens and up) */}
+        <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-cream-border overflow-x-auto">
+          <table className="w-full text-start whitespace-nowrap min-w-[700px]">
+            <thead className="bg-cream/50 border-b border-cream-border text-[10px] uppercase tracking-widest text-ink-light">
+              <tr>
+                <th className="px-4 py-3 text-start font-bold">Brand & Model</th>
+                <th className="px-4 py-3 text-start font-bold">Color</th>
+                <th className="px-4 py-3 text-start font-bold">Type / Shape</th>
+                <th className="px-4 py-3 text-center font-bold">Stock</th>
+                <th className="px-4 py-3 text-start font-bold">Price</th>
+                <th className="px-4 py-3 text-end font-bold">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-cream-border text-sm">
+              {filteredFrames.map(f => (
+                <tr key={f.id} className={cn("hover:bg-cream/20 transition-colors", f.quantity <= f.min_stock ? "bg-rose-50/20" : "")}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className={cn("w-8 h-8 rounded shrink-0 flex items-center justify-center", f.quantity <= f.min_stock ? "bg-rose-100 text-rose-600" : "bg-cream text-burgundy")}>
+                        <Glasses size={16} />
+                      </div>
+                      <div>
+                        <div className="font-bold text-ink">{getLabel('frame_brand', f.brand)}</div>
+                        <div className="text-[10px] text-ink-light font-mono">{f.model}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="bg-cream-dark/30 px-2 py-1 rounded text-ink font-medium text-[11px]">{f.color || "-"}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-xs text-ink">{getLabel('frame_type', f.type)}</div>
+                    <div className="text-[10px] text-ink-light mt-0.5">{getLabel('frame_shape', f.shape)}</div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex flex-col items-center">
+                      <span className={cn("font-bold text-lg leading-none", f.quantity <= f.min_stock ? "text-rose-600" : "text-ink")}>
+                        {f.quantity}
+                      </span>
+                      <span className="text-[9px] text-ink-light uppercase tracking-widest mt-1">Min: {f.min_stock}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm font-bold font-mono text-ink">{formatIQD(f.sell_price)}</div>
+                    <div className="text-[9px] text-ink-light font-mono line-through mt-0.5">{formatIQD(f.cost_price)}</div>
+                  </td>
+                  <td className="px-4 py-3 text-end">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => { setRestockAmount(5); setRestockFrame(f); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Restock">
+                        <Plus size={16} />
+                      </button>
+                      <button onClick={() => handleOpenEdit(f)} className="p-1.5 text-ink-light hover:text-burgundy hover:bg-burgundy/5 rounded transition-colors" title="Edit">
+                        <Edit2 size={16} />
+                      </button>
+                      <button onClick={() => setDeleteConfirmId(f.id)} className="p-1.5 text-ink-light hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" title="Delete">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredFrames.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-ink-light italic text-sm">
+                    {lang === 'ar' ? 'لم يتم العثور على إطارات تطابق بحثك.' : 'No frames found matching your criteria.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile View (Visible on screens smaller than lg) */}
+        <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredFrames.map(f => {
+            const isLowStock = f.quantity <= f.min_stock;
+            return (
+              <div 
+                key={f.id} 
+                className={cn(
+                  "p-4 bg-white rounded-xl border flex flex-col justify-between shadow-sm transition-all gap-4",
+                  isLowStock ? "border-rose-200 bg-rose-50/[0.15]" : "border-cream-border"
+                )}
+              >
+                {/* Header Information */}
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border", isLowStock ? "bg-rose-100 text-rose-600 border-rose-200" : "bg-cream text-burgundy border-cream-dark/20")}>
+                        <Glasses size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-ink text-[15px] truncate">{getLabel('frame_brand', f.brand)}</h4>
+                        <p className="text-[11px] font-mono text-ink-light uppercase tracking-wider">{f.model || "-"}</p>
+                      </div>
+                    </div>
+                    
+                    {/* Stock status pill */}
+                    <div className="text-right shrink-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("text-xs font-black px-2 py-1 rounded-md", isLowStock ? "bg-rose-100 text-rose-700" : "bg-emerald-50 text-emerald-700 border border-emerald-100")}>
+                          {f.quantity} {lang === 'ar' ? 'متبقي' : 'left'}
+                        </span>
+                      </div>
+                      <span className="text-[9px] text-ink-light block mt-1 uppercase tracking-widest font-semibold">Min: {f.min_stock}</span>
+                    </div>
+                  </div>
+
+                  {/* Attributes Section */}
+                  <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-cream-border/60 text-xs">
+                    <div>
+                      <span className="text-ink-light text-[9px] uppercase font-bold tracking-widest block mb-0.5">{lang === 'ar' ? 'اللون' : 'Color'}</span>
+                      <span className="text-ink font-semibold">{f.color || "-"}</span>
                     </div>
                     <div>
-                      <div className="font-bold text-ink">{getLabel('frame_brand', f.brand)}</div>
-                      <div className="text-[10px] text-ink-light font-mono">{f.model}</div>
+                      <span className="text-ink-light text-[9px] uppercase font-bold tracking-widest block mb-0.5">{lang === 'ar' ? 'النوع والشكل' : 'Type & Shape'}</span>
+                      <span className="text-ink font-semibold">{getLabel('frame_type', f.type)} • {getLabel('frame_shape', f.shape)}</span>
                     </div>
                   </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="bg-cream-dark/30 px-2 py-1 rounded text-ink font-medium text-[11px]">{f.color || "-"}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="text-xs text-ink">{getLabel('frame_type', f.type)}</div>
-                  <div className="text-[10px] text-ink-light mt-0.5">{getLabel('frame_shape', f.shape)}</div>
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <div className="flex flex-col items-center">
-                    <span className={cn("font-bold text-lg leading-none", f.quantity <= f.min_stock ? "text-rose-600" : "text-ink")}>
-                      {f.quantity}
-                    </span>
-                    <span className="text-[9px] text-ink-light uppercase tracking-widest mt-1">Min: {f.min_stock}</span>
+                </div>
+
+                {/* Footer Price & Responsive Actions Row */}
+                <div className="flex items-center justify-between pt-3 border-t border-cream-border/60 gap-4 mt-auto">
+                  <div className="text-start">
+                    <span className="text-ink-light text-[9px] uppercase font-bold tracking-widest block">{lang === 'ar' ? 'سعر البيع' : 'Sell Price'}</span>
+                    <span className="text-base font-bold font-mono text-ink tabular-nums">{formatIQD(f.sell_price)}</span>
+                    <span className="text-[10px] text-ink-light font-mono line-through block tabular-nums">{formatIQD(f.cost_price)}</span>
                   </div>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="text-sm font-bold font-mono text-ink">{formatIQD(f.sell_price)}</div>
-                  <div className="text-[9px] text-ink-light font-mono line-through mt-0.5">{formatIQD(f.cost_price)}</div>
-                </td>
-                <td className="px-4 py-3 text-end">
-                  <div className="flex items-center justify-end gap-1">
-                    <button onClick={() => { setRestockAmount(5); setRestockFrame(f); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Restock">
-                      <Plus size={16} />
+
+                  {/* Action triggers with large touch targets (44px) */}
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => { setRestockAmount(5); setRestockFrame(f); }} 
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-blue-50 text-blue-600 hover:bg-blue-100 active:bg-blue-200 border border-blue-100 rounded-xl transition-all shadow-sm"
+                      title="Restock"
+                    >
+                      <Plus size={18} />
                     </button>
-                    <button onClick={() => handleOpenEdit(f)} className="p-1.5 text-ink-light hover:text-burgundy hover:bg-burgundy/5 rounded transition-colors" title="Edit">
+                    <button 
+                      onClick={() => handleOpenEdit(f)} 
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-cream hover:bg-cream-dark/40 active:bg-cream-dark/60 border border-cream-border text-ink rounded-xl transition-all shadow-sm"
+                      title="Edit"
+                    >
                       <Edit2 size={16} />
                     </button>
-                    <button onClick={() => setDeleteConfirmId(f.id)} className="p-1.5 text-ink-light hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" title="Delete">
+                    <button 
+                      onClick={() => setDeleteConfirmId(f.id)} 
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border border-rose-100 text-rose-600 rounded-xl transition-all shadow-sm"
+                      title="Delete"
+                    >
                       <Trash2 size={16} />
                     </button>
                   </div>
-                </td>
-              </tr>
-            ))}
-            {filteredFrames.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-ink-light italic text-sm">
-                  {lang === 'ar' ? 'لم يتم العثور على إطارات تطابق بحثك.' : 'No frames found matching your criteria.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </div>
+              </div>
+            );
+          })}
+          {filteredFrames.length === 0 && (
+            <div className="col-span-1 md:col-span-2 p-12 bg-white border border-cream-border rounded-xl text-center text-ink-light italic text-sm">
+              {lang === 'ar' ? 'لم يتم العثور على إطارات تطابق بحثك.' : 'No frames found matching your criteria.'}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Add / Edit Modal */}

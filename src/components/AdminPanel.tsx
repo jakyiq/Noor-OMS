@@ -28,41 +28,7 @@ export default function AdminPanel() {
         console.error("Error loading admin clinics:", e);
       }
     }
-    // Default initial clinics corresponding to screenshot
-    return [
-      {
-        id: "clinic_noor_1",
-        name: "عوينات نور",
-        owner_email: "oplplm94@gmail.com",
-        plan: "quarterly",
-        expires_at: "2026-08-14",
-        status: "active"
-      },
-      {
-        id: "clinic_noor_2",
-        name: "عوينات النور",
-        owner_email: "",
-        plan: "trial",
-        expires_at: "2026-05-16",
-        status: "expired"
-      },
-      {
-        id: "clinic_dijla",
-        name: "بصريات دجلة",
-        owner_email: "tigris.opt@gmail.com",
-        plan: "yearly",
-        expires_at: "2027-02-14",
-        status: "active"
-      },
-      {
-        id: "clinic_elite",
-        name: "مركز النخبة الطبي",
-        owner_email: "elite.clinic@outlook.com",
-        plan: "lifetime",
-        expires_at: "2099-12-31",
-        status: "active"
-      }
-    ];
+    return [];
   });
 
   // Persist to local storage when clinics change
@@ -627,8 +593,14 @@ export default function AdminPanel() {
 
       {/* MODAL 1: ADD CLINIC MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white border border-cream-border rounded-2xl p-6 w-full max-w-md shadow-2xl relative animate-in zoom-in-95 duration-200">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div 
+            className="bg-white border border-cream-border rounded-2xl p-6 w-full max-w-md shadow-2xl relative animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button 
               onClick={() => setShowAddModal(false)}
               className="absolute top-4 end-4 p-1.5 rounded-lg text-ink-light hover:bg-cream text-ink-mid transition-colors cursor-pointer"
@@ -723,8 +695,14 @@ export default function AdminPanel() {
 
       {/* MODAL 2: EDIT SUBSCRIPTION MODAL */}
       {showSubModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white border border-cream-border rounded-2xl p-6 w-full max-w-md shadow-2xl relative animate-in zoom-in-95 duration-200">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setShowSubModal(null)}
+        >
+          <div 
+            className="bg-white border border-cream-border rounded-2xl p-6 w-full max-w-md shadow-2xl relative animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button 
               onClick={() => setShowSubModal(null)}
               className="absolute top-4 end-4 p-1.5 rounded-lg text-ink-light hover:bg-cream text-ink-mid transition-colors cursor-pointer"
@@ -827,8 +805,14 @@ export default function AdminPanel() {
 
       {/* MODAL 3: CONSOLIDATED DELETION CHALLENGE CONTROL */}
       {showDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white border hover:border-rose-100 border-cream-border rounded-2xl p-6 w-full max-w-sm shadow-2xl relative animate-in zoom-in-95 duration-200 text-center">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setShowDeleteId(null)}
+        >
+          <div 
+            className="bg-white border hover:border-rose-100 border-cream-border rounded-2xl p-6 w-full max-w-sm shadow-2xl relative animate-in zoom-in-95 duration-200 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
             
             <div className="w-12 h-12 bg-rose-50 text-rose-700 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-100 animate-bounce">
               <ShieldAlert size={22} />
